@@ -20,9 +20,21 @@ func _ready() -> void:
 	if args.has("shot-hour"):
 		GameState.minutes = float(args["shot-hour"]) * 60.0
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if args.has("speed"):
+		GameState.set_speed.call_deferred(float(args["speed"]))
 
 
 func _process(_delta: float) -> void:
+	if args.has("quit-frames"):
+		_count += 1
+		if _count % 600 == 0:
+			var st := GameState.stats
+			print("[sim] day %d %s money=%d safety=%.1f opinion=%.1f total=%d resolved=%d failed=%d perfect=%d calls=%d/%d" % [
+				GameState.day(), GameState.clock_str(), GameState.money, GameState.safety, GameState.opinion,
+				st.total, st.resolved, st.failed, st.perfect, st.calls_ok, st.calls_total])
+		if _count >= int(args["quit-frames"]):
+			get_tree().quit()
+		return
 	if _shot_path == "":
 		return
 	_count += 1

@@ -10,7 +10,7 @@ const RIVER_ROW := 9
 const BRIDGES := [1, 5, 8, 11, 15]
 const INNER_MIN := 3          # 游戏区节点范围
 const INNER_MAX := 14
-const LM_SIZE := 1024
+const LM_SIZE := 2048
 const SLAB_Y := 0.18
 
 const FACILITY_SITES := [
@@ -697,6 +697,6 @@ func random_incident_spot(r: RandomNumberGenerator) -> Dictionary:
 		var right := Vector3(-dir.z, 0, dir.x)
 		var side := 1.0 if r.randf() < 0.5 else -1.0
 		var road_p := a.lerp(b, t)
-		return {"edge": e, "t": t, "road": road_p + right * side * RoadGraph.LANE_OFFSET,
+		return {"edge": e, "t": t, "road_center": road_p, "road": road_p + right * side * RoadGraph.LANE_OFFSET,
 			"pos": road_p + right * side * (W * 0.5 + 1.5), "desc": graph.describe(e, t)}
 	return {}
