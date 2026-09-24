@@ -119,8 +119,8 @@ func avg_response() -> float:
 
 
 func _new_day() -> void:
-	var grant := 320_000.0 + (safety - 60.0) * 4000.0
-	grant = maxf(grant, 150_000.0)
+	var grant := 160_000.0 + (safety - 60.0) * 3000.0
+	grant = maxf(grant, 60_000.0)
 	money += grant
 	var report := {"day": day() - 1, "grant": grant, "safety": safety, "opinion": opinion,
 		"resolved": stats.resolved, "failed": stats.failed, "avg": avg_response()}

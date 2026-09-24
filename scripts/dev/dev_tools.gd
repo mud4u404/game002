@@ -27,11 +27,22 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if args.has("quit-frames"):
 		_count += 1
-		if _count % 600 == 0:
+		if _count % int(args.get("print-every", "600")) == 0:
+			print("[t] ", Time.get_ticks_msec())
 			var st := GameState.stats
 			print("[sim] day %d %s money=%d safety=%.1f opinion=%.1f total=%d resolved=%d failed=%d perfect=%d calls=%d/%d" % [
 				GameState.day(), GameState.clock_str(), GameState.money, GameState.safety, GameState.opinion,
 				st.total, st.resolved, st.failed, st.perfect, st.calls_ok, st.calls_total])
+			var g = get_tree().current_scene
+			if g is Game and args.has("units-debug"):
+				var parts := []
+				for u in g.units:
+					parts.append("%s:%s:%d%s" % [u.callsign, u.state_name(), int(u.fatigue), "R" if u.resting else ""])
+				print("  ", " ".join(parts))
+				var ip := []
+				for inc in g.incidents:
+					ip.append("%s/%s/%d" % [inc.title(), Incident.STATE_NAMES[inc.state], inc.units.size()])
+				print("  inc: ", " ".join(ip))
 		if _count >= int(args["quit-frames"]):
 			get_tree().quit()
 		return

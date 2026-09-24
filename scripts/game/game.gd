@@ -214,7 +214,7 @@ func _process(delta: float) -> void:
 		for inc in incidents:
 			if inc.is_active() and inc.state != Incident.S.CALL:
 				load += inc.level()
-		GameState.safety = clampf(GameState.safety + ((66.0 - GameState.safety) * 0.004 - load * 0.006) * dm, 0.0, 100.0)
+		GameState.safety = clampf(GameState.safety + ((64.0 - GameState.safety) * 0.006 - load * 0.006) * dm, 0.0, 100.0)
 		GameState.opinion = clampf(GameState.opinion + (62.0 - GameState.opinion) * 0.003 * dm, 0.0, 100.0)
 
 	_tutorial_tick(delta)
@@ -367,7 +367,7 @@ func _resolve(inc: Incident) -> void:
 	else:
 		var reward := 2500.0 * lvl * (1.3 if perfect else 1.0)
 		GameState.earn(reward)
-		GameState.adjust(0.7 * lvl * (1.3 if perfect else 0.8), 0.5 * lvl * (1.4 if perfect else 0.6))
+		GameState.adjust(0.35 * lvl * (1.3 if perfect else 0.8), 0.3 * lvl * (1.4 if perfect else 0.6))
 		GameState.stats.resolved += 1
 		if perfect:
 			GameState.stats.perfect += 1
@@ -663,3 +663,10 @@ func _tutorial_tick(delta: float) -> void:
 			break
 	if _advisor_t > 150.0:
 		_tut_once("recruit", "经费宽裕的话，按 R 打开警力部署，招募新的编组。")
+	if GameState.safety < 50.0:
+		_tut_once("low_safety", "群众安全感在下滑，警力快顶不住了。赶紧按 R 增派编组，别让经费躺在账上。")
+	if GameState.safety < 40.0 and not _tut.has("warn40"):
+		_tut["warn40"] = true
+		GameState.post("市局", "考核预警：群众安全感低于 40，请分局立即采取措施！", "lv4")
+	if GameState.safety > 55.0:
+		_tut.erase("warn40")

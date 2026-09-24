@@ -84,7 +84,9 @@ func _process(delta: float) -> void:
 	for k in _cars.size():
 		var car: Dictionary = _cars[k]
 		car.s += car.speed * dt
-		while car.s >= car.len:
+		var guard := 0
+		while car.s >= car.len and guard < 8:
+			guard += 1
 			car.s -= car.len
 			car.prev = car.from
 			car.from = car.to

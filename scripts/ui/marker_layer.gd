@@ -171,11 +171,13 @@ func _dashed(pts: PackedVector2Array, col: Color, w: float, t: float) -> void:
 		var a := pts[k]
 		var b := pts[k + 1]
 		var L := a.distance_to(b)
-		if L < 0.01:
+		if L < 0.01 or L > 20000.0 or is_nan(L):
 			continue
 		var dir := (b - a) / L
 		var s := 0.0
-		while s < L:
+		var guard := 0
+		while s < L and guard < 4000:
+			guard += 1
 			var cyc := fposmod(acc + s, dash + gap)
 			if cyc < dash:
 				var e := minf(s + (dash - cyc), L)

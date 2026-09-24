@@ -22,6 +22,7 @@ var leader := ""
 var rank := ""
 var graph: RoadGraph
 var eta_min := 0.0
+var resting := false       # 轮休中：返回驻地恢复体力
 
 var _path := PackedVector3Array()
 var _seg := 0
@@ -136,6 +137,7 @@ var _prefix_len := 1
 # ------------------------------------------------------------------ 指令
 func dispatch_to(inc: Incident) -> void:
 	incident = inc
+	resting = false
 	var p := plan(inc.spot.road_center, inc.spot.edge)
 	_follow(p)
 	eta_min = p.len / _speed(true) * Data.MIN_PER_SEC
@@ -146,7 +148,7 @@ func dispatch_to(inc: Incident) -> void:
 func release(resume_patrol: bool) -> void:
 	incident = null
 	_set_siren(false)
-	if resume_patrol and info.patrol:
+	if resume_patrol and info.patrol and fatigue < 78.0:
 		start_patrol()
 	else:
 		return_to_base()
@@ -223,7 +225,9 @@ func tick(dt: float, dm: float) -> bool:
 	if _path.size() >= 2 and _seg < _path.size() - 1:
 		var emergency := state == State.ENROUTE
 		var move := _speed(emergency) * dt
-		while move > 0.0 and _seg < _path.size() - 1:
+		var guard := 0
+		while move > 0.0 and _seg < _path.size() - 1 and guard < 64:
+			guard += 1
 			var a := _path[_seg]
 			var b := _path[_seg + 1]
 			var L := a.distance_to(b)
@@ -256,11 +260,22 @@ func tick(dt: float, dm: float) -> bool:
 	# 疲劳
 	match state:
 		State.ENROUTE, State.ONSCENE:
-			fatigue = minf(fatigue + dm * 0.32, 100.0)
+			fatigue = minf(fatigue + dm * 0.22, 100.0)
 		State.IDLE:
-			fatigue = maxf(fatigue - dm * 0.5, 0.0)
+			fatigue = maxf(fatigue - dm * 1.1, 0.0)
 		_:
 			fatigue = minf(fatigue + dm * 0.03, 100.0)
+
+	# 轮休：疲劳过高的巡逻单位自动回所休整，恢复后重新上街
+	if state == State.PATROL and fatigue > 78.0 and not resting:
+		resting = true
+		GameState.post(callsign, "连续执勤疲劳度过高，申请返所轮休。", "info")
+		return_to_base()
+	elif state == State.IDLE and resting and fatigue < 20.0:
+		resting = false
+		if info.patrol:
+			GameState.post(callsign, "轮休结束，恢复街面巡逻。", "unit")
+			start_patrol()
 
 	# 警灯
 	if _siren or state == State.ONSCENE:
