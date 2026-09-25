@@ -72,7 +72,7 @@ func setup(p_game: Game) -> void:
 	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vm := ShaderMaterial.new()
 	vm.shader = load("res://shaders/ui_vignette.gdshader")
-	vm.set_shader_parameter("strength", 0.5)
+	vm.set_shader_parameter("strength", 0.75)
 	vig.material = vm
 	root.add_child(vig)
 
@@ -102,11 +102,13 @@ func _pill_box() -> StyleBoxFlat:
 	b.bg_color = Color(0.05, 0.12, 0.28, 0.9)
 	b.border_color = UIKit.LINE
 	b.set_border_width_all(1)
-	b.set_corner_radius_all(14)
-	b.content_margin_left = 10
-	b.content_margin_right = 12
-	b.content_margin_top = 3
-	b.content_margin_bottom = 3
+	b.bg_color = Color(0, 0, 0, 0)
+	b.border_color = Color(0.25, 0.6, 1.0, 0.9)
+	b.set_corner_radius_all(11)
+	b.content_margin_left = 8
+	b.content_margin_right = 10
+	b.content_margin_top = 1
+	b.content_margin_bottom = 1
 	return b
 
 
@@ -117,8 +119,8 @@ func _pill(parent: Control, icon_name: String, icon_col: Color, tip: String) -> 
 	pc.mouse_filter = Control.MOUSE_FILTER_PASS
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
-	h.add_child(UIKit.icon_label(icon_name, 16, icon_col))
-	var l := UIKit.label("", 13, UIKit.TEXT, "bold")
+	h.add_child(UIKit.icon_label(icon_name, 13, icon_col))
+	var l := UIKit.label("", 11, UIKit.TEXT, "bold")
 	h.add_child(l)
 	pc.add_child(h)
 	parent.add_child(pc)
@@ -127,23 +129,29 @@ func _pill(parent: Control, icon_name: String, icon_col: Color, tip: String) -> 
 
 func _build_bar() -> void:
 	_bar = PanelContainer.new()
-	var sb := UIKit.panel_box(22, Color(0.02, 0.06, 0.15, 0.88), 6)
-	sb.content_margin_left = 10
-	sb.content_margin_right = 10
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.02, 0.06, 0.16, 0.8)
+	sb.border_color = Color(0.16, 0.48, 1.0, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(16)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
 	_bar.add_theme_stylebox_override("panel", sb)
 	root.add_child(_bar)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
 	_bar.add_child(h)
 	var badge := Control.new()
-	badge.custom_minimum_size = Vector2(30, 30)
+	badge.custom_minimum_size = Vector2(24, 24)
 	badge.draw.connect(func():
-		UIKit.draw_hex(badge, Vector2(15, 15), 15, Color("1d4fb8"), UIKit.CYAN, 1.5)
-		UIKit.draw_icon(badge, "local_police", Vector2(15, 15), 17, Color.WHITE))
+		UIKit.draw_hex(badge, Vector2(12, 12), 12, Color("1d4fb8"), UIKit.CYAN, 1.2)
+		UIKit.draw_icon(badge, "local_police", Vector2(12, 12), 14, Color.WHITE))
 	h.add_child(badge)
 	var tv := HBoxContainer.new()
 	tv.add_theme_constant_override("separation", 6)
-	_clock = UIKit.label("17:10", 18, Color.WHITE, "bold")
+	_clock = UIKit.label("17:10", 14, Color.WHITE, "bold")
 	_day = UIKit.label("", 11, UIKit.TEXT_DIM)
 	_day.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	tv.add_child(_clock)
@@ -153,7 +161,7 @@ func _build_bar() -> void:
 	_msg_pill = Button.new()
 	_msg_pill.focus_mode = Control.FOCUS_NONE
 	_msg_pill.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_msg_pill.custom_minimum_size = Vector2(300, 28)
+	_msg_pill.custom_minimum_size = Vector2(260, 22)
 	_msg_pill.tooltip_text = "电台记录（L）"
 	_msg_pill.pressed.connect(toggle_log)
 	var mh := HBoxContainer.new()
@@ -162,9 +170,9 @@ func _build_bar() -> void:
 	mh.offset_left = 10
 	mh.offset_right = -10
 	mh.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_msg_icon = UIKit.icon_label("radio", 16, UIKit.GREEN)
+	_msg_icon = UIKit.icon_label("radio", 14, UIKit.GREEN)
 	mh.add_child(_msg_icon)
-	_msg_label = UIKit.label("暂无新消息", 12, UIKit.GREEN, "bold")
+	_msg_label = UIKit.label("暂无新消息", 11, UIKit.GREEN, "bold")
 	_msg_label.clip_text = true
 	_msg_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mh.add_child(_msg_label)
@@ -173,7 +181,8 @@ func _build_bar() -> void:
 	var sp := HBoxContainer.new()
 	sp.add_theme_constant_override("separation", 0)
 	for pair in [[0.0, "pause", "暂停  P"], [1.0, "play_arrow", "正常  1"], [2.0, "fast_forward", "2 倍速  2"], [4.0, "keyboard_double_arrow_right", "4 倍速  3"]]:
-		var b := UIKit.icon_button(pair[1], pair[2], 18)
+		var b := UIKit.icon_button(pair[1], pair[2], 15)
+		b.custom_minimum_size = Vector2(26, 22)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var s: float = pair[0]
 		b.pressed.connect(func(): GameState.set_speed(s))
@@ -552,7 +561,7 @@ func _refresh_right() -> void:
 # ================================================================== 底部圆形按钮
 func _build_dock() -> void:
 	_dock = HBoxContainer.new()
-	_dock.add_theme_constant_override("separation", 14)
+	_dock.add_theme_constant_override("separation", 8)
 	root.add_child(_dock)
 	for it in [["call", "phone_in_talk", "来电"], ["incident", "notifications", "警情"], ["units", "groups", "警力"],
 			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
@@ -563,7 +572,7 @@ func _build_dock() -> void:
 
 func _round_button(id: String, icon_name: String, text: String) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(58, 70)
+	c.custom_minimum_size = Vector2(46, 54)
 	c.mouse_filter = Control.MOUSE_FILTER_STOP
 	c.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	c.set_meta("hover", false)
@@ -574,7 +583,7 @@ func _round_button(id: String, icon_name: String, text: String) -> Control:
 			_on_dock(id))
 	c.draw.connect(func():
 		var t := Time.get_ticks_msec() / 1000.0
-		var ctr := Vector2(29, 26)
+		var ctr := Vector2(23, 19)
 		var on: bool = c.get_meta("on", false)
 		var hv: bool = c.get_meta("hover")
 		var badge: int = c.get_meta("badge", 0)
@@ -583,19 +592,19 @@ func _round_button(id: String, icon_name: String, text: String) -> Control:
 		var fill := Color(0.05, 0.12, 0.28, 0.92)
 		if alert:
 			var ph := fmod(t * 1.2, 1.0)
-			c.draw_circle(ctr, 24 + ph * 8.0, UIKit.with_alpha(UIKit.RED, 0.35 * (1.0 - ph)))
+			c.draw_circle(ctr, 17 + ph * 7.0, UIKit.with_alpha(UIKit.RED, 0.35 * (1.0 - ph)))
 			fill = UIKit.RED.darkened(0.2)
 			ring = UIKit.RED.lightened(0.3)
 		elif on:
 			fill = Color(0.12, 0.32, 0.75, 0.95)
-		c.draw_circle(ctr, 24, fill)
-		c.draw_arc(ctr, 24, 0, TAU, 48, ring, 1.5, true)
-		UIKit.draw_icon(c, icon_name, ctr, 24, Color.WHITE if (on or hv or alert) else UIKit.TEXT_DIM)
-		UIKit.draw_text_c(c, text, Vector2(29, 60), 11, UIKit.TEXT if (on or hv) else UIKit.TEXT_DIM, "reg")
+		c.draw_circle(ctr, 17, fill)
+		c.draw_arc(ctr, 17, 0, TAU, 40, ring, 1.5, true)
+		UIKit.draw_icon(c, icon_name, ctr, 18, Color.WHITE if (on or hv or alert) else UIKit.TEXT_DIM)
+		UIKit.draw_text_c(c, text, Vector2(23, 46), 10, UIKit.TEXT if (on or hv) else UIKit.TEXT_DIM, "reg")
 		if badge > 0:
-			var bc := ctr + Vector2(17, -17)
-			c.draw_circle(bc, 9, UIKit.RED if id == "call" else UIKit.AMBER)
-			UIKit.draw_text_c(c, str(badge), bc, 11, Color.WHITE))
+			var bc := ctr + Vector2(13, -13)
+			c.draw_circle(bc, 7.5, UIKit.RED if id == "call" else UIKit.AMBER)
+			UIKit.draw_text_c(c, str(badge), bc, 10, Color.WHITE))
 	return c
 
 
@@ -766,7 +775,7 @@ func _layout() -> void:
 	var vs := root.get_viewport_rect().size
 	_bar.reset_size()
 	_bar.position = Vector2((vs.x - _bar.size.x) * 0.5, 14)
-	var top := 14.0 + _bar.size.y + 14.0
+	var top := 14.0 + _bar.size.y + 12.0
 	_rail.set_items(_rail_items())
 	_rail_bg.reset_size()
 	_rail_bg.position = Vector2(14, top)
@@ -807,10 +816,10 @@ func _process(delta: float) -> void:
 		_msg_label.add_theme_color_override("font_color", cc)
 		_msg_icon.add_theme_color_override("font_color", cc)
 	var mb := StyleBoxFlat.new()
-	mb.bg_color = Color(0.05, 0.25, 0.2, 0.55) if _unread == 0 else Color(0.3, 0.2, 0.05, 0.55)
+	mb.bg_color = Color(0.04, 0.35, 0.22, 0.85) if _unread == 0 else Color(0.4, 0.26, 0.04, 0.85)
 	mb.border_color = UIKit.with_alpha(UIKit.GREEN if _unread == 0 else UIKit.AMBER, 0.6)
 	mb.set_border_width_all(1)
-	mb.set_corner_radius_all(14)
+	mb.set_corner_radius_all(11)
 	for st in ["normal", "hover", "pressed"]:
 		_msg_pill.add_theme_stylebox_override(st, mb)
 	_refresh_t -= delta

@@ -89,6 +89,16 @@ func _draw_incident(inc: Incident, t: float, zoom: float, vr: Rect2) -> void:
 	var sel: bool = UIKit.same(game.selected, inc)
 	var hv: bool = UIKit.same(hover, inc)
 	var R := 16.0 + (2.0 if inc.level() >= 3 else 0.0) + (2.0 if sel or hv else 0.0)
+	# 重大警情：青绿色搜索 / 警戒范围圈（参照《112》）
+	if active and inc.level() >= 3 and not calling:
+		var rw := 55.0
+		var edge_p := _p(inc.spot.pos + Vector3(rw, 0, 0))
+		var rr := edge_p.distance_to(p)
+		draw_circle(p, rr, Color(0.1, 0.75, 0.6, 0.12))
+		var n := 48
+		for k in n:
+			if k % 2 == 0:
+				draw_arc(p, rr, TAU * k / n + t * 0.1, TAU * (k + 1) / n + t * 0.1, 3, Color(0.25, 0.95, 0.75, 0.7), 1.5, true)
 	# 地面光晕 / 波纹
 	var glow := Color(col.r, col.g, col.b, 0.22)
 	draw_circle(p, R * 1.6, Color(col.r, col.g, col.b, 0.08))
@@ -129,11 +139,13 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 	var fill: Color = UNIT_FILL.get(u.kind, UIKit.ACCENT)
 	if idle:
 		fill = fill.darkened(0.35)
-	# 地面定位点
-	draw_circle(p, 6.0, Color(fill.r, fill.g, fill.b, 0.25))
-	draw_circle(p, 2.6, Color.WHITE)
+	# 地面定位点 + 发光光柱
+	draw_circle(p, 9.0, Color(0.3, 0.65, 1.0, 0.18))
+	draw_circle(p, 4.5, Color(0.5, 0.8, 1.0, 0.45))
+	draw_circle(p, 2.4, Color.WHITE)
 	var card := Rect2(p + Vector2(-cw * 0.5, -stem - ch), Vector2(cw, ch))
-	draw_line(p, Vector2(p.x, card.end.y), Color(0.8, 0.92, 1.0, 0.9), 1.5, true)
+	draw_line(p, Vector2(p.x, card.end.y), Color(0.35, 0.7, 1.0, 0.35), 5.0, true)
+	draw_line(p, Vector2(p.x, card.end.y), Color(0.85, 0.95, 1.0, 0.95), 1.4, true)
 	# 卡片
 	var border := Color(0.75, 0.9, 1.0, 0.9)
 	if sel:

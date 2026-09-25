@@ -15,22 +15,22 @@ const SIDEWALK := 3.2
 const LM_W := 1024
 
 # 调色板（白天基准，夜间由场景光照压暗）
-const C_LAND := Color("081633")
-const C_SIDEWALK := Color("0a1a3d")
+const C_LAND := Color("071636")
+const C_SIDEWALK := Color("071636")
 const C_CURB := Color("143068")
 const C_ASPHALT := Color("2d5fbf")
 const C_ASPHALT_D := Color("1d4390")
 const C_LINE := Color("ffffff")
 const C_YELLOW := Color("6fa0ff")
-const C_GRASS := Color("0a2a40")
-const C_GRASS_D := Color("0a283d")
-const C_COMPOUND := Color("0b1d41")
-const C_PLAZA := Color("0a1a3d")
-const C_OLDTOWN := Color("0b1b3f")
-const C_PARKING := Color("0e2350")
-const C_TRACK := Color("143266")
-const C_BANK := Color("3a78e0")
-const C_WATER_EDGE := Color("1b4a8f")
+const C_GRASS := Color("0a2838")
+const C_GRASS_D := Color("0a2636")
+const C_COMPOUND := Color("071636")
+const C_PLAZA := Color("071636")
+const C_OLDTOWN := Color("071636")
+const C_PARKING := Color("0a1d45")
+const C_TRACK := Color("0f2d5c")
+const C_BANK := Color("3d8bff")
+const C_WATER_EDGE := Color("1a4c9e")
 
 var graph := RoadGraph.new()
 var rng := RandomNumberGenerator.new()
@@ -483,10 +483,10 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 	match zone:
 		"oldtown":
 			patches.append({"poly": inner, "color": C_OLDTOWN})
-			for lot in _split(inner, rng.randf_range(380.0, 650.0), 9.0):
+			for lot in _split(inner, rng.randf_range(140.0, 260.0), 6.0):
 				if rng.randf() < 0.1:
 					continue
-				var bp := _inset(lot, 1.2)
+				var bp := _inset(lot, 0.9)
 				_add_building(bp, rng.randf_range(7.0, 12.0), "tile", _pick([Color("132c63"), Color("142e66")]))
 		"cbd":
 			patches.append({"poly": inner, "color": C_PLAZA})
@@ -514,7 +514,7 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 			_trees_along(inner, 10.0, 2.5)
 		"commercial":
 			patches.append({"poly": inner, "color": C_PLAZA.darkened(0.03)})
-			for lot in _split(inner, rng.randf_range(600.0, 1200.0), 14.0):
+			for lot in _split(inner, rng.randf_range(260.0, 520.0), 9.0):
 				var bp := _inset(lot, 1.8)
 				_add_building(bp, rng.randf_range(14.0, 48.0), "flat", _pick([Color("142e66"), Color("152f69")]))
 		"residential":
@@ -530,7 +530,7 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 
 
 func _residential(_b: Dictionary, inner: PackedVector2Array, area: float) -> void:
-	var comp := _inset(inner, 5.0)
+	var comp := _inset(inner, 2.5)
 	patches.append({"poly": inner, "color": C_PLAZA.darkened(0.04)})
 	if comp.size() < 3:
 		return
@@ -545,16 +545,16 @@ func _residential(_b: Dictionary, inner: PackedVector2Array, area: float) -> voi
 	var placed := 0
 	var roof := [Color("142e67"), Color("15306a")]
 	# 南北朝向的板楼行列
-	var z := bb.position.y + 9.0
-	while z + 12.0 < bb.end.y - 6.0:
-		var x := bb.position.x + rng.randf_range(6.0, 12.0)
-		while x < bb.end.x - 20.0:
-			var L := rng.randf_range(34.0, 58.0)
-			var r := PackedVector2Array([Vector2(x, z), Vector2(x + L, z), Vector2(x + L, z + 12.5), Vector2(x, z + 12.5)])
+	var z := bb.position.y + 5.0
+	while z + 11.0 < bb.end.y - 4.0:
+		var x := bb.position.x + rng.randf_range(3.0, 6.0)
+		while x < bb.end.x - 12.0:
+			var L := rng.randf_range(16.0, 26.0)
+			var r := PackedVector2Array([Vector2(x, z), Vector2(x + L, z), Vector2(x + L, z + 11.0), Vector2(x, z + 11.0)])
 			if _inside(comp, r):
 				_add_building(r, rng.randi_range(11, 32) * 3.0, "slab", _pick(roof))
 				placed += 1
-				x += L + rng.randf_range(12.0, 18.0)
+				x += L + rng.randf_range(4.0, 8.0)
 			else:
 				x += 6.0
 		# 楼间绿地的树
@@ -562,7 +562,7 @@ func _residential(_b: Dictionary, inner: PackedVector2Array, area: float) -> voi
 			var tp := Vector2(rng.randf_range(bb.position.x, bb.end.x), z + 12.5 + rng.randf_range(6.0, 18.0))
 			if Geometry2D.is_point_in_polygon(tp, comp):
 				_add_tree(tp, rng.randf_range(0.9, 1.3))
-		z += rng.randf_range(34.0, 40.0)
+		z += rng.randf_range(22.0, 27.0)
 	if placed == 0:
 		for lot in _split(comp, 500.0, 12.0):
 			var bp := _inset(lot, 2.5)
@@ -785,7 +785,8 @@ func _build_3d() -> void:
 
 	_build_water()
 	_build_bridges()
-	_build_buildings()
+	# 建筑以 2D 轮廓绘制在地图贴图中（战术图风格），不再生成 3D 体块
+	building_mat = MeshKit.shader_mat("res://shaders/building_map.gdshader")
 	_build_trees()
 
 

@@ -4,7 +4,7 @@ extends RefCounted
 ## 六边形图标框；实色按钮只用蓝（确认）与红（紧急/结束）。
 
 const ACCENT := Color("2f7bff")
-const CYAN := Color("4fb4ff")
+const CYAN := Color("3fa9ff")
 const BLUE := ACCENT
 const AMBER := Color("ffb020")
 const RED := Color("ff3d4a")
@@ -12,10 +12,10 @@ const GREEN := Color("2fe0a0")
 const TEXT := Color("eaf3ff")
 const TEXT_DIM := Color("9db8dc")
 const TEXT_MUTED := Color("6582ad")
-const BG := Color(0.035, 0.08, 0.18, 0.92)
+const BG := Color(0.027, 0.07, 0.18, 0.94)
 const BG2 := Color(0.06, 0.13, 0.28, 0.95)
 const BG3 := Color(0.09, 0.19, 0.38, 0.95)
-const LINE := Color(0.25, 0.55, 1.0, 0.45)
+const LINE := Color(0.16, 0.48, 1.0, 0.75)
 const NAVY := Color("12306e")
 
 static var _fonts := {}
@@ -72,11 +72,14 @@ static func theme() -> Theme:
 	return t
 
 
-static func panel_box(radius := 6, bg := BG, pad := 14) -> StyleBoxFlat:
+static func panel_box(radius := 3, bg := BG, pad := 14, accent_left := false) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
 	b.bg_color = bg
 	b.border_color = LINE
 	b.set_border_width_all(1)
+	if accent_left:
+		b.border_width_left = 4
+		b.border_color = Color("1f6fff")
 	b.set_corner_radius_all(radius)
 	b.shadow_color = Color(0, 0.02, 0.08, 0.5)
 	b.shadow_size = 12
@@ -87,7 +90,7 @@ static func panel_box(radius := 6, bg := BG, pad := 14) -> StyleBoxFlat:
 
 static func button_box(state: String, kind := "secondary", color := ACCENT) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
-	b.set_corner_radius_all(4)
+	b.set_corner_radius_all(3)
 	b.content_margin_left = 14
 	b.content_margin_right = 14
 	b.content_margin_top = 6

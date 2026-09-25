@@ -27,12 +27,8 @@ void fragment() {
 	vec3 c = texture(map_tex, clamp(uv, vec2(0.0005), vec2(0.9995))).rgb;
 	float in_world = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
 	c = mix(vec3(0.004, 0.012, 0.04), c, in_world);
-	// 极细的扫描网格，增加战术图质感
-	vec2 g = abs(fract(wpos.xz / 40.0) - 0.5);
-	float grid = 1.0 - smoothstep(0.0, 0.012, min(g.x, g.y));
-	c += vec3(0.01, 0.025, 0.07) * grid * 0.5;
 	float ip = inside_play(wpos.xz);
-	c = mix(c * 0.55, c, ip);
-	c *= mix(1.0, 0.82, night_factor);
+	c = mix(c * 0.5, c, ip);
+	c *= mix(1.0, 0.85, night_factor);
 	ALBEDO = c;
 }

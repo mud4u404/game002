@@ -15,7 +15,7 @@ var _close: Button
 
 func _init(p_title := "", p_icon := "", _accent := UIKit.ACCENT, closable := false) -> void:
 	title = p_title
-	add_theme_stylebox_override("panel", UIKit.panel_box(12, UIKit.BG, 14))
+	add_theme_stylebox_override("panel", UIKit.panel_box(3, UIKit.BG, 14, true))
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
@@ -26,7 +26,7 @@ func _init(p_title := "", p_icon := "", _accent := UIKit.ACCENT, closable := fal
 		_icon_label = UIKit.icon_label(p_icon if p_icon != "" else "info", 20, UIKit.TEXT_DIM)
 		_icon_label.visible = p_icon != ""
 		h.add_child(_icon_label)
-		_title_label = UIKit.label(title, 16, UIKit.TEXT, "bold")
+		_title_label = UIKit.label(title, 14, UIKit.CYAN, "bold")
 		h.add_child(_title_label)
 		_sub_label = UIKit.label("", 13, UIKit.TEXT_MUTED)
 		_sub_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
