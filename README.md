@@ -7,7 +7,18 @@
 - 引擎：Godot 4.4（Forward+）
 - 全部场景、城市与美术为程序化生成，无外部美术资源（字体除外，见 `assets/fonts/LICENSE.md`）
 
-## 运行
+## 在线试玩
+
+网页版位于 `docs/` 目录，通过 GitHub Pages 发布：**https://mud4u404.github.io/game002/**
+（需在仓库 Settings → Pages 中选择本分支的 `/docs` 目录作为来源。首次加载约 45MB。）
+
+网页版使用 Compatibility 渲染器，部分后处理效果比桌面版简化。重新导出网页版：
+
+```bash
+GODOT=/path/to/godot tools/export_web.sh
+```
+
+## 本地运行
 
 1. 安装 [Godot 4.4](https://godotengine.org/download)（标准版，非 .NET）。
 2. 用 Godot 打开本目录的 `project.godot`，按 F5 运行；或者命令行运行：

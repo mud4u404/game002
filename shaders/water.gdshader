@@ -22,7 +22,7 @@ void fragment() {
 	float g2 = texture(n2, uv2 * vec2(0.5, 5.0)).g;
 	float glint = smoothstep(0.62, 0.8, g1 * g2 * 1.6);
 	vec3 city = mix(vec3(1.0, 0.7, 0.4), vec3(0.5, 0.8, 1.0), step(0.5, fract(wpos.x * 0.013)));
-	EMISSION = city * glint * 0.8 * night_factor + vec3(0.02, 0.025, 0.04) * night_factor;
+	EMISSION = city * glint * 0.8 * night_factor + vec3(0.025, 0.045, 0.075) * night_factor;
 	ROUGHNESS = 0.03;
 	METALLIC = 0.1;
 	SPECULAR = 0.9;

@@ -6,9 +6,11 @@ var env: Environment
 var sun: DirectionalLight3D
 var sky_mat: ProceduralSkyMaterial
 var night := 1.0
+var compat := false    # 网页版（Compatibility 渲染器）需要额外提亮
 
 
 func _ready() -> void:
+	compat = RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	env = Environment.new()
 	sky_mat = ProceduralSkyMaterial.new()
 	sky_mat.sun_angle_max = 20.0
@@ -106,4 +108,6 @@ func apply(h: float) -> void:
 	env.ambient_light_energy = lerpf(0.45, 0.8, night)
 	env.fog_light_color = Color(0.68, 0.74, 0.82).lerp(Color(0.06, 0.055, 0.08), night).lerp(Color(0.8, 0.5, 0.35), dusk * 0.5)
 	env.fog_density = lerpf(0.0007, 0.0013, night)
-	env.tonemap_exposure = lerpf(1.0, 1.15, night)
+	env.tonemap_exposure = lerpf(1.0, 1.15, night) * (lerpf(1.1, 1.6, night) if compat else 1.0)
+	if compat:
+		env.ambient_light_energy *= lerpf(1.0, 1.5, night)
