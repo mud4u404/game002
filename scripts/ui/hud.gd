@@ -7,7 +7,7 @@ extends CanvasLayer
 
 const GAP := 16.0
 const TOP := 16.0
-const LEFT_W := 340.0
+const LEFT_W := 300.0
 const RIGHT_W := 360.0
 const RADIO_COLORS := {
 	"cmd": Color("8fb8ff"), "unit": Color("b9c7d6"), "call": Color("ffb020"),
@@ -226,7 +226,7 @@ func _build_incidents() -> void:
 	_inc_panel.body.add_child(scroll)
 	_inc_list = VBoxContainer.new()
 	_inc_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_inc_list.add_theme_constant_override("separation", 6)
+	_inc_list.add_theme_constant_override("separation", 2)
 	scroll.add_child(_inc_list)
 
 
@@ -366,25 +366,46 @@ func _actions(buttons: Array) -> void:
 	_right_body.add_child(g)
 
 
+func _tiles(items: Array) -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	for it in items:
+		var pc := PanelContainer.new()
+		pc.add_theme_stylebox_override("panel", UIKit.panel_box(10, UIKit.BG2, 10))
+		pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 0)
+		var top := HBoxContainer.new()
+		top.add_theme_constant_override("separation", 4)
+		top.add_child(UIKit.icon_label(it[0], 14, UIKit.TEXT_MUTED))
+		top.add_child(UIKit.label(it[1], 11, UIKit.TEXT_MUTED))
+		v.add_child(top)
+		var val := UIKit.label("—", 20, UIKit.TEXT, "bold")
+		v.add_child(val)
+		_fields[it[2]] = val
+		pc.add_child(v)
+		h.add_child(pc)
+	_right_body.add_child(h)
+
+
 func _ctx_incident(inc: Incident) -> void:
-	_right.set_title("警情详情", "#%03d" % inc.id, "notifications")
+	_right.set_title("警情", "#%03d" % inc.id, "notifications")
 	_header(inc.data().gi, Data.level_color(inc.level()), inc.title(), inc.desc())
-	_sep()
-	_row("info", "状态", "state")
-	_row("schedule", "已用时", "elapsed")
-	_row("timer", "升级时限", "deadline")
-	_row("groups", "需求警力", "need")
-	_row("local_police", "出警单位", "units")
-	var bar := MeterBar.new(UIKit.GREEN, 5, 1)
-	bar.custom_minimum_size = Vector2(0, 5)
-	_right_body.add_child(bar)
-	_fields["bar"] = bar
+	_right_body.add_child(FlowBar.new(inc))
+	_tiles([["schedule", "用时", "elapsed"], ["timer", "时限", "deadline"], ["groups", "警力", "need"]])
+	var units := HFlowContainer.new()
+	units.add_theme_constant_override("h_separation", 6)
+	units.add_theme_constant_override("v_separation", 6)
+	_right_body.add_child(units)
+	_fields["unit_box"] = units
+	_fields["unit_sig"] = ""
 	var btns := []
 	if inc.state == Incident.S.CALL:
-		var cb := UIKit.icon_text_button("phone_in_talk", "接听来电", "primary", UIKit.RED)
+		var cb := UIKit.icon_text_button("phone_in_talk", "接听", "primary", UIKit.RED)
 		cb.pressed.connect(func(): open_call(inc))
 		btns.append(cb)
-	var add := UIKit.icon_text_button("add_circle", "增派警力", "primary")
+	var add := UIKit.icon_text_button("add_circle", "增派", "primary")
+	add.tooltip_text = "派出最近的可用单位"
 	add.pressed.connect(func():
 		var u := game.best_unit(inc, 0)
 		if u:
@@ -398,39 +419,61 @@ func _ctx_incident(inc: Incident) -> void:
 	_actions(btns)
 
 
+func _unit_chip(u: PoliceUnit) -> Control:
+	var pc := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = UIKit.BG2
+	sb.set_corner_radius_all(16)
+	sb.content_margin_left = 4
+	sb.content_margin_right = 10
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	pc.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	var ic := Control.new()
+	ic.custom_minimum_size = Vector2(24, 24)
+	var col: Color = u.state_color()
+	ic.draw.connect(func():
+		ic.draw_circle(Vector2(12, 12), 12, col)
+		UIKit.draw_icon(ic, u.info.gi, Vector2(12, 12), 15, Color.WHITE))
+	h.add_child(ic)
+	h.add_child(UIKit.label(u.callsign, 13, UIKit.TEXT, "bold"))
+	var eta := "到场" if u.state == PoliceUnit.State.ONSCENE else "%d′" % ceili(u.eta_min)
+	h.add_child(UIKit.label(eta, 12, UIKit.GREEN if u.state == PoliceUnit.State.ONSCENE else UIKit.TEXT_DIM))
+	pc.add_child(h)
+	return pc
+
+
 func _ctx_unit(u: PoliceUnit) -> void:
-	_right.set_title("警力详情", u.info.name, "local_police")
-	_header(u.info.gi, u.state_color(), u.callsign, "%s · %s %s" % [u.info.crew, u.rank, u.leader])
-	_sep()
-	_row("info", "状态", "state")
-	_row("assignment", "当前任务", "task")
-	_row("trending_up", "等级", "level")
-	_row("shield", "武力等级", "force")
-	var fh := HBoxContainer.new()
-	fh.add_theme_constant_override("separation", 8)
-	fh.add_child(UIKit.icon_label("speed", 16, UIKit.TEXT_MUTED))
-	var k := UIKit.label("体力", 13, UIKit.TEXT_DIM)
-	k.custom_minimum_size = Vector2(66, 0)
-	fh.add_child(k)
-	var bar := MeterBar.new(UIKit.GREEN, 6, 1)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	fh.add_child(bar)
-	_fields["fat"] = bar
-	_right_body.add_child(fh)
+	_right.set_title("警力", u.info.name, "local_police")
+	_header(u.info.gi, u.state_color(), u.callsign, "%s %s · %s" % [u.rank, u.leader, u.info.crew])
+	_tiles([["info", "状态", "state"], ["shield", "武力", "force"], ["speed", "体力", "hp"]])
+	var task := HBoxContainer.new()
+	task.add_theme_constant_override("separation", 8)
+	task.add_child(UIKit.icon_label("assignment", 18, UIKit.TEXT_MUTED))
+	var tl := UIKit.label("", 14, UIKit.TEXT)
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	task.add_child(tl)
+	_fields["task"] = tl
+	_right_body.add_child(task)
 	var btns := []
 	if u.info.patrol:
-		var pb := UIKit.icon_text_button("route", "恢复巡逻", "primary")
+		var pb := UIKit.icon_text_button("route", "巡逻", "primary")
 		pb.pressed.connect(func(): game.patrol(u))
 		btns.append(pb)
-	var rb := UIKit.icon_text_button("garage_home", "返回驻地")
+	var rb := UIKit.icon_text_button("garage_home", "回所")
 	rb.pressed.connect(func(): game.recall(u))
 	btns.append(rb)
 	var fb := UIKit.icon_text_button("my_location", "定位")
 	fb.pressed.connect(func(): game.cam.focus_on(u.global_position, 220))
 	btns.append(fb)
 	_actions(btns)
-	var hint := UIKit.label("右键点击警情：手动派警\n右键点击路面：机动布控", 12, UIKit.TEXT_MUTED)
+	var hint := HBoxContainer.new()
+	hint.add_theme_constant_override("separation", 6)
+	hint.add_child(UIKit.icon_label("info", 14, UIKit.TEXT_MUTED))
+	hint.add_child(UIKit.label("右键警情派警 · 右键路面布控", 12, UIKit.TEXT_MUTED))
 	_right_body.add_child(hint)
 
 
@@ -517,33 +560,33 @@ func _refresh_right() -> void:
 	var obj = _ctx_obj
 	if obj is Incident:
 		var inc: Incident = obj
-		var col := Data.level_color(inc.level())
 		_setf("title", ("110 来电 · 待研判" if inc.state == Incident.S.CALL else inc.title()), UIKit.TEXT)
-		_setf("sub", "%s · %s警情" % [inc.desc(), Data.level_name(inc.level())])
+		_setf("sub", inc.desc())
 		if _fields.has("hicon"):
 			_fields["hicon"].queue_redraw()
-		var st_txt: String = Incident.STATE_NAMES[inc.state]
-		if inc.stalled:
-			st_txt = "武力不足，请求增援"
-		_setf("state", st_txt, UIKit.RED if inc.stalled else col)
-		_setf("elapsed", UIKit.fmt_min(inc.elapsed(GameState.minutes)) + " 分钟")
-		_setf("deadline", (UIKit.fmt_min(inc.deadline) + " 分钟") if inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE] else "—")
-		_setf("need", "%d 组 · 武力 ≥ %d" % [int(inc.data().need), int(inc.data().force)])
-		var names := []
+		_setf("elapsed", UIKit.fmt_min(inc.elapsed(GameState.minutes)))
+		var live := inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE]
+		_setf("deadline", UIKit.fmt_min(inc.deadline) if live else "—", UIKit.RED if live and inc.deadline < 5.0 else UIKit.TEXT)
+		_setf("need", "%d/%d" % [inc.units.size(), int(inc.data().need)], UIKit.RED if inc.stalled else UIKit.TEXT)
+		var sig := ""
 		for u in inc.units:
-			names.append("%s（%s）" % [u.callsign, "已到场" if u.state == PoliceUnit.State.ONSCENE else "约 %d 分钟" % ceili(u.eta_min)])
-		_setf("units", "、".join(names) if not names.is_empty() else "暂无")
-		if _fields.has("bar"):
-			_fields["bar"].set_value(inc.progress)
+			sig += "%d:%d:%d," % [u.uid, u.state, ceili(u.eta_min)]
+		if _fields.has("unit_box") and sig != _fields["unit_sig"]:
+			_fields["unit_sig"] = sig
+			var box: Control = _fields["unit_box"]
+			for c in box.get_children():
+				c.queue_free()
+			for u in inc.units:
+				box.add_child(_unit_chip(u))
+			if inc.units.is_empty():
+				box.add_child(UIKit.label("尚未派出警力", 12, UIKit.TEXT_MUTED))
 	elif obj is PoliceUnit:
 		var u: PoliceUnit = obj
-		_setf("state", u.state_name() + ("（轮休）" if u.resting else ""), u.state_color())
-		_setf("task", (u.incident.title() + " · " + u.incident.desc()) if u.incident else "—")
-		_setf("level", "Lv.%d" % u.level)
-		_setf("force", "%d / 4" % u.force())
-		if _fields.has("fat"):
-			var hp := 1.0 - u.fatigue / 100.0
-			_fields["fat"].set_value(hp, UIKit.GREEN if hp > 0.5 else (UIKit.AMBER if hp > 0.2 else UIKit.RED))
+		_setf("state", u.state_name() if not u.resting else "轮休", u.state_color())
+		_setf("force", "%d/4" % u.force())
+		var hp := int(100.0 - u.fatigue)
+		_setf("hp", "%d%%" % hp, UIKit.GREEN if hp > 50 else (UIKit.AMBER if hp > 20 else UIKit.RED))
+		_setf("task", (u.incident.title() + " · " + u.incident.desc()) if u.incident else "暂无任务")
 	elif obj is Dictionary:
 		var n := 0
 		var busy := 0
@@ -812,7 +855,7 @@ func _layout() -> void:
 	_dock.reset_size()
 	_dock.position = Vector2((vs.x - _dock.size.x) * 0.5, vs.y - _dock.size.y - GAP)
 	# 警情列表高度随内容变化
-	var want := 56.0 + maxf(_cards.size(), 1) * 76.0
+	var want := 56.0 + maxf(_cards.size(), 1) * 66.0
 	var max_h := vs.y - top2 - 250.0
 	_inc_panel.position = Vector2(GAP, top2)
 	_inc_panel.size = Vector2(LEFT_W, clampf(want, 110.0, max_h))

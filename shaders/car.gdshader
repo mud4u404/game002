@@ -17,7 +17,7 @@ void vertex() {
 
 void fragment() {
 	float cabin = step(0.92, lp.y);
-	vec3 col = mix(body_c, vec3(0.02, 0.025, 0.03), cabin * 0.9);
+	vec3 col = mix(body_c, vec3(0.35, 0.38, 0.42), cabin * 0.6);
 	float front = step(0.8, -ln.z) * step(0.35, lp.y) * step(lp.y, 0.7) * step(0.45, abs(lp.x));
 	float rear = step(0.8, ln.z) * step(0.4, lp.y) * step(lp.y, 0.75) * step(0.45, abs(lp.x));
 	float on = 0.25 + 0.75 * night_factor;

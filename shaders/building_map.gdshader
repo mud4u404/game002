@@ -41,7 +41,7 @@ void fragment() {
 		c *= 0.97 + 0.05 * g;
 		if (style == 1) {
 			// 青瓦屋面：细密瓦垄
-			c *= 0.94 + 0.08 * h12(floor(wpos.xz * 0.7));
+			c *= 1.0;
 		}
 		if (style == 3) {
 			rough = 0.35;
@@ -50,15 +50,15 @@ void fragment() {
 	}
 	float ip = inside_play(wpos.xz);
 	float lum = dot(c, vec3(0.3, 0.59, 0.11));
-	c = mix(mix(vec3(lum), c, 0.3) * 0.62, c, ip);
+	c = mix(mix(vec3(lum), c, 0.4) * 0.8, c, ip);
 	vec2 luv = (wpos.xz - lm_rect.xy) / lm_rect.zw;
 	vec3 lm = texture(lightmap, luv).rgb;
-	vec3 emi = c * lm * night_factor * 0.9 * exp(-max(wpos.y - 0.2, 0.0) / 6.0);
+	vec3 emi = c * lm * night_factor * 0.25 * exp(-max(wpos.y - 0.2, 0.0) / 6.0);
 	// 夜间零星屋顶灯
 	if (part > 1.5 && style != 1) {
 		vec2 cell = floor(wpos.xz / 5.0);
 		vec2 f = fract(wpos.xz / 5.0);
-		float dotm = step(length(f - 0.5), 0.09) * step(h12(cell), 0.05);
+		float dotm = step(length(f - 0.5), 0.09) * step(h12(cell), 0.02);
 		emi += dotm * vec3(1.0, 0.8, 0.55) * 1.5 * night_factor * ip;
 	}
 	ALBEDO = c;

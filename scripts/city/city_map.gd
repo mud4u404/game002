@@ -8,27 +8,29 @@ extends Node3D
 signal ready_to_show
 
 const TEX_W := 4096
-const HEIGHT_SCALE := 0.42
+const HEIGHT_SCALE := 0.3
+## 地图保持干净：不画树与屋顶设备，让玩家专注于警力部署
+const DECOR := false
 const SIDEWALK := 3.2
 const LM_W := 1024
 
 # 调色板（白天基准，夜间由场景光照压暗）
-const C_LAND := Color("c2beb4")
-const C_SIDEWALK := Color("d3cec4")
-const C_CURB := Color("9d9a93")
-const C_ASPHALT := Color("54575c")
-const C_ASPHALT_D := Color("5c5f63")
-const C_LINE := Color("eeeeea")
-const C_YELLOW := Color("e2b33c")
-const C_GRASS := Color("8eaa6c")
-const C_GRASS_D := Color("7f9d5f")
-const C_COMPOUND := Color("b9c2a9")
-const C_PLAZA := Color("d9d4ca")
-const C_OLDTOWN := Color("b8b1a5")
-const C_PARKING := Color("686b70")
-const C_TRACK := Color("b4583f")
-const C_BANK := Color("8f8a80")
-const C_WATER_EDGE := Color("6f95a6")
+const C_LAND := Color("c6c2b8")
+const C_SIDEWALK := Color("cdc9c0")
+const C_CURB := Color("b3afa6")
+const C_ASPHALT := Color("f3f2ee")
+const C_ASPHALT_D := Color("ecebe6")
+const C_LINE := Color("ffffff")
+const C_YELLOW := Color("e6c56a")
+const C_GRASS := Color("b7cc9f")
+const C_GRASS_D := Color("bdd0a8")
+const C_COMPOUND := Color("c8cdbd")
+const C_PLAZA := Color("cdc9c0")
+const C_OLDTOWN := Color("c9c3b8")
+const C_PARKING := Color("bdbab3")
+const C_TRACK := Color("cf9a86")
+const C_BANK := Color("b9b5ac")
+const C_WATER_EDGE := Color("9fc1d2")
 
 var graph := RoadGraph.new()
 var rng := RandomNumberGenerator.new()
@@ -481,34 +483,17 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 	match zone:
 		"oldtown":
 			patches.append({"poly": inner, "color": C_OLDTOWN})
-			for lot in _split(inner, rng.randf_range(160.0, 320.0), 6.0):
-				if rng.randf() < 0.12:
-					patches.append({"poly": _inset(lot, 0.5), "color": C_PLAZA.darkened(0.06)})
-					if rng.randf() < 0.6:
-						_tree_in(lot, 1)
+			for lot in _split(inner, rng.randf_range(380.0, 650.0), 9.0):
+				if rng.randf() < 0.1:
 					continue
-				var bp := _inset(lot, 0.6)
-				if bp.size() < 3:
-					continue
-				var tile := [Color("6f7478"), Color("797d80"), Color("676c70"), Color("7d756c"), Color("8a6f5e")]
-				var lo := _obb(bp)
-				# 用贴合地块的矩形做坡屋顶（与地块求交，避免越界）
-				var rect := _rect(lo.c, lo.u, lo.v, lo.hu * 0.98, lo.hv * 0.98)
-				var fit := PackedVector2Array()
-				for q in Geometry2D.intersect_polygons(rect, bp):
-					if fit.size() < 3 or absf(_signed_area(q)) > absf(_signed_area(fit)):
-						fit = q
-				if absf(_signed_area(fit)) > absf(_signed_area(bp)) * 0.85:
-					buildings.append({"poly": _rect(lo.c, lo.u, lo.v, lo.hu * 0.96, lo.hv * 0.96), "h": rng.randf_range(5.0, 9.0) * HEIGHT_SCALE,
-						"style": "gable", "color": _pick(tile), "obb": lo})
-				else:
-					_add_building(bp, rng.randf_range(6.0, 12.0), "tile", _pick(tile))
+				var bp := _inset(lot, 1.2)
+				_add_building(bp, rng.randf_range(7.0, 12.0), "tile", _pick([Color("e6e1d8"), Color("e2ddd3")]))
 		"cbd":
 			patches.append({"poly": inner, "color": C_PLAZA})
 			var o := _obb(inner)
 			var pod := _inset(inner, 5.0)
 			if pod.size() >= 3:
-				_add_building(pod, rng.randf_range(16.0, 26.0), "podium", _pick([Color("a9adb2"), Color("b2aea6"), Color("a4a9ad")]))
+				_add_building(pod, rng.randf_range(16.0, 26.0), "podium", _pick([Color("e4e3e0"), Color("e0dfdb")]))
 				var core := _inset(pod, 3.0)
 				var n := 2 if o.hu > 70.0 else 1
 				for k in n:
@@ -525,13 +510,13 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 								ba = a
 								best = q
 					if ba > 220.0:
-						_add_building(best, rng.randf_range(110.0, 210.0), "tower", _pick([Color("7f8b98"), Color("8b949c"), Color("96999e")]))
+						_add_building(best, rng.randf_range(110.0, 210.0), "tower", _pick([Color("d9dde2"), Color("d5d9de")]))
 			_trees_along(inner, 10.0, 2.5)
 		"commercial":
 			patches.append({"poly": inner, "color": C_PLAZA.darkened(0.03)})
 			for lot in _split(inner, rng.randf_range(600.0, 1200.0), 14.0):
 				var bp := _inset(lot, 1.8)
-				_add_building(bp, rng.randf_range(14.0, 48.0), "flat", _pick([Color("b5b0a7"), Color("a8adb2"), Color("bdb5a8"), Color("9fa4a8"), Color("c2bcb2"), Color("8f9499")]))
+				_add_building(bp, rng.randf_range(14.0, 48.0), "flat", _pick([Color("e7e3dc"), Color("e3dfd8")]))
 		"residential":
 			_residential(b, inner, area)
 		"park":
@@ -555,10 +540,10 @@ func _residential(_b: Dictionary, inner: PackedVector2Array, area: float) -> voi
 	if ring.size() >= 3:
 		var rp := ring.duplicate()
 		rp.append(ring[0])
-		paths.append({"pts": rp, "w": 4.5, "color": Color("bdb8ae")})
+		pass
 	var bb := _bbox(comp)
 	var placed := 0
-	var roof := [Color("cfc9bd"), Color("c3c8cc"), Color("d2cabd"), Color("b9bec3"), Color("c9b9a6")]
+	var roof := [Color("ebe8e2"), Color("e7e4de")]
 	# 南北朝向的板楼行列
 	var z := bb.position.y + 9.0
 	while z + 12.0 < bb.end.y - 6.0:
@@ -593,14 +578,13 @@ func _park(inner: PackedVector2Array) -> void:
 	if ring.size() >= 3:
 		var rp := ring.duplicate()
 		rp.append(ring[0])
-		paths.append({"pts": rp, "w": 3.2, "color": C_PLAZA})
+		pass
 	var pond := PackedVector2Array()
 	for k in 20:
 		var a := TAU * k / 20.0
 		var rr := 1.0 + 0.18 * sin(a * 3.0 + 1.0)
 		pond.append(o.c + o.u * cos(a) * o.hu * 0.35 * rr + o.v * sin(a) * o.hv * 0.4 * rr)
 	patches.append({"poly": pond, "color": C_WATER_EDGE, "water": true})
-	paths.append({"pts": PackedVector2Array([o.c - o.u * o.hu, o.c - o.u * o.hu * 0.4 + o.v * o.hv * 0.55, o.c + o.u * o.hu * 0.5 + o.v * o.hv * 0.5, o.c + o.u * o.hu]), "w": 2.4, "color": C_PLAZA})
 	_tree_in(inner, 70, pond)
 
 
@@ -612,7 +596,6 @@ func _riverside(inner: PackedVector2Array) -> void:
 	for k in 25:
 		var t := -1.0 + 2.0 * k / 24.0
 		pts.append(o.c + o.u * o.hu * t + o.v * sin(t * 5.0 + o.c.x * 0.01) * o.hv * 0.25)
-	paths.append({"pts": pts, "w": 4.0, "color": C_PLAZA})
 	_tree_in(inner, int(o.hu * 0.22))
 
 
@@ -622,7 +605,7 @@ func _school(inner: PackedVector2Array) -> void:
 	var bw := o.hv * 0.32
 	var bldg := _rect(o.c - o.v * (o.hv - bw - 2.0), o.u, o.v, o.hu * 0.8, bw)
 	if _inside(inner, bldg):
-		_add_building(bldg, 18.0, "flat", Color("d8cbb5"))
+		_add_building(bldg, 18.0, "flat", Color("e8e2d7"))
 	var tc := o.c + o.v * (bw * 0.9)
 	var ta := minf(o.hu * 0.72, 55.0)
 	var tb := minf(o.hv - bw - 4.0, 30.0)
@@ -660,6 +643,8 @@ func _trees_along(poly: PackedVector2Array, spacing: float, inset: float) -> voi
 
 
 func _add_tree(p: Vector2, s: float) -> void:
+	if not DECOR:
+		return
 	trees.append(Vector3(p.x, s, p.y))
 
 
@@ -700,7 +685,7 @@ func _place_facilities() -> void:
 		var bwidth := minf(lot_w * 0.85, 22.0)
 		var bc := lot_c - front * (lot_d - bdepth - 2.0)
 		var bldg := _rect(bc, side, front, bwidth, bdepth)
-		_add_building(bldg, 16.0 if f.type != "patrol_hq" else 22.0, "police", Color("e6eaef"))
+		_add_building(bldg, 16.0 if f.type != "patrol_hq" else 22.0, "police", Color("b8cdf2"))
 		var pdepth := minf(lot_d * 2.0 - bdepth * 2.0 - 6.0, 12.0)
 		var pc := lot_c + front * (lot_d - pdepth * 0.5 - 1.0)
 		var phs := minf(lot_w * 0.9, 26.0)
@@ -1000,6 +985,8 @@ func _tri_fill_uv(st: SurfaceTool, poly: PackedVector2Array, y: float, color: Co
 
 
 func _roof_details(st: SurfaceTool, poly: PackedVector2Array, y: float, col: Color, style: String) -> void:
+	if not DECOR:
+		return
 	var o := _obb(poly)
 	var n := 0
 	match style:

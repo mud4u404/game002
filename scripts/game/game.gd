@@ -58,7 +58,7 @@ func _ready() -> void:
 	await city.build(SEED)
 	traffic = Traffic.new()
 	add_child(traffic)
-	traffic.setup(city.graph, 150, SEED)
+	traffic.setup(city.graph, 60, SEED)
 	_markers = Node3D.new()
 	add_child(_markers)
 	cam.clicked.connect(_on_click)

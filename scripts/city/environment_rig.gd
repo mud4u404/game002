@@ -35,7 +35,7 @@ func _ready() -> void:
 		env.set_glow_level(i, [0.0, 0.6, 1.0, 0.9, 0.7, 0.4, 0.0][i])
 	env.ssao_enabled = true
 	env.ssao_radius = 2.5
-	env.ssao_intensity = 2.2
+	env.ssao_intensity = 0.8
 	env.ssao_power = 1.4
 	env.ssr_enabled = false
 	env.ssr_max_steps = 48
@@ -100,15 +100,15 @@ func apply(h: float) -> void:
 		az = 150.0
 	sun.rotation_degrees = Vector3(-maxf(elev, 8.0), az, 0)
 	var day_col := Color(1.0, 0.95, 0.88).lerp(Color(1.0, 0.62, 0.38), dusk)
-	sun.light_color = day_col.lerp(Color(0.55, 0.65, 1.0), night)
-	sun.light_energy = lerpf(0.95, 0.3, night) * (1.0 - dusk * 0.4)
-	sun.shadow_opacity = lerpf(0.55, 0.4, night)
+	sun.light_color = day_col.lerp(Color(0.7, 0.76, 0.9), night)
+	sun.light_energy = lerpf(0.95, 0.2, night) * (1.0 - dusk * 0.4)
+	sun.shadow_opacity = lerpf(0.32, 0.25, night)
 
 	env.ambient_light_color = Color(0.55, 0.6, 0.68).lerp(Color(0.2, 0.25, 0.38), night)
-	env.ambient_light_energy = lerpf(0.3, 0.8, night)
+	env.ambient_light_energy = lerpf(0.3, 0.55, night)
 	env.fog_light_color = Color(0.68, 0.74, 0.82).lerp(Color(0.06, 0.055, 0.08), night).lerp(Color(0.8, 0.5, 0.35), dusk * 0.5)
 	env.fog_density = lerpf(0.0007, 0.0013, night)
-	env.glow_intensity = lerpf(0.05, 0.55, night)
+	env.glow_intensity = lerpf(0.0, 0.18, night)
 	env.tonemap_exposure = lerpf(0.82, 1.15, night) * (lerpf(1.1, 1.6, night) if compat else 1.0)
 	if compat:
 		env.ambient_light_energy *= lerpf(1.0, 1.5, night)

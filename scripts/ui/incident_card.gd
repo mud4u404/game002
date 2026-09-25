@@ -1,6 +1,6 @@
 class_name IncidentCard
 extends Control
-## 警情卡片（自绘）：级别色图标、标题、位置、状态与进度。
+## 警情卡片：图标 + 倒计时环 + 短标题 + 出警单位小图标。文字只保留最必要的信息。
 
 signal pressed(inc: Incident)
 
@@ -13,7 +13,7 @@ var _born := 0.0
 func _init(p_inc: Incident, p_game: Game) -> void:
 	inc = p_inc
 	game = p_game
-	custom_minimum_size = Vector2(0, 70)
+	custom_minimum_size = Vector2(0, 60)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_born = Time.get_ticks_msec() / 1000.0
@@ -28,94 +28,93 @@ func _gui_input(e: InputEvent) -> void:
 
 
 func _process(_d: float) -> void:
+	tooltip_text = inc.desc()
 	queue_redraw()
-
-
-func _fit(f: Font, s: String, size_px: int, w: float) -> String:
-	if w <= 10.0 or f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x <= w:
-		return s
-	while s.length() > 1 and f.get_string_size(s + "…", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x > w:
-		s = s.left(s.length() - 1)
-	return s + "…"
 
 
 func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
-	var r := Rect2(Vector2.ZERO, size)
 	var col := Data.level_color(inc.level())
-	var active := inc.is_active()
 	var calling := inc.state == Incident.S.CALL
-	if not active:
+	var done := not inc.is_active()
+	if done:
 		col = UIKit.GREEN if inc.state == Incident.S.DONE else UIKit.TEXT_MUTED
-	var sel: bool = UIKit.same(game.selected, inc)
-	var bg := UIKit.BG2
-	if _hover or sel:
-		bg = UIKit.BG3
 	if calling:
-		bg = bg.lerp(Color("4a1d20"), 0.35 + 0.25 * sin(t * 5.0))
-	UIKit.draw_round_rect(self, r, bg, 9, UIKit.ACCENT if sel else Color(0, 0, 0, 0), 2 if sel else 0)
+		col = UIKit.RED
+	var sel: bool = UIKit.same(game.selected, inc)
+	var bg := Color(1, 1, 1, 0.0)
+	if _hover or sel:
+		bg = Color(1, 1, 1, 0.06)
+	UIKit.draw_round_rect(self, Rect2(Vector2.ZERO, size), bg, 10)
+	if sel:
+		draw_rect(Rect2(0, 10, 3, size.y - 20), UIKit.ACCENT)
 	var age := t - _born
 	if age < 0.8:
-		UIKit.draw_round_rect(self, r, UIKit.with_alpha(col, 0.3 * (1.0 - age / 0.8)), 9)
+		UIKit.draw_round_rect(self, Rect2(Vector2.ZERO, size), UIKit.with_alpha(col, 0.25 * (1.0 - age / 0.8)), 10)
 
-	# 图标
-	var ic := Vector2(32, size.y * 0.5)
-	draw_circle(ic, 20, UIKit.with_alpha(col, 0.16))
-	draw_arc(ic, 20, 0, TAU, 40, UIKit.with_alpha(col, 0.55), 1.5, true)
-	var gi: String = "phone_in_talk" if calling else inc.data().gi
-	UIKit.draw_icon(self, gi, ic, 22, col)
-
-	var fb := UIKit.font("bold")
-	var fr := UIKit.font("reg")
-	var x := 62.0
-	var w := size.x - x - 12.0
-	var title := "110 来电 · 待研判" if calling else inc.title()
-	var lvl_txt := Data.level_name(inc.level())
-	var lw := fb.get_string_size(lvl_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 14.0
-	draw_string(fb, Vector2(x, 23), _fit(fb, title, 15, w - lw - 8), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, UIKit.TEXT)
-	UIKit.draw_chip(self, lvl_txt, Vector2(size.x - lw - 10, 9), col, 11)
-	draw_string(fr, Vector2(x, 43), _fit(fr, inc.desc(), 12, w), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.TEXT_DIM)
-
-	# 状态行
-	var st: String = Incident.STATE_NAMES[inc.state]
-	var st_col := UIKit.TEXT_DIM
-	var frac := -1.0
-	var bar_col := col
+	# 图标 + 环
+	var c := Vector2(32, size.y * 0.5)
+	var R := 19.0
+	if calling:
+		var ph := fmod(t * 1.3, 1.0)
+		draw_circle(c, R + 3 + ph * 8.0, UIKit.with_alpha(col, 0.35 * (1.0 - ph)))
+	draw_circle(c, R, col if not done else UIKit.with_alpha(col, 0.35))
+	UIKit.draw_icon(self, "phone_in_talk" if calling else inc.data().gi, c, 22, Color.WHITE)
+	var ring_frac := -1.0
+	var ring_col := Color.WHITE
 	match inc.state:
-		Incident.S.CALL:
-			st = "点击接听"
-			st_col = UIKit.RED
-			frac = clampf(1.0 - inc.call_wait / 10.0, 0, 1)
-			bar_col = UIKit.RED
-		Incident.S.WAITING:
-			st = "等待派警"
-			st_col = UIKit.AMBER
-			frac = clampf(inc.deadline / float(inc.true_data().deadline), 0, 1)
-		Incident.S.DISPATCHED:
-			var eta := 99.0
-			for u in inc.units:
-				if u.state == PoliceUnit.State.ENROUTE:
-					eta = minf(eta, u.eta_min)
-			st = "赶赴现场" + (" · 约 %d 分钟" % ceili(eta) if eta < 99.0 else "")
-			st_col = UIKit.ACCENT.lightened(0.25)
-			frac = clampf(inc.deadline / float(inc.true_data().deadline), 0, 1)
+		Incident.S.WAITING, Incident.S.DISPATCHED:
+			ring_frac = clampf(inc.deadline / float(inc.true_data().deadline), 0, 1)
+			ring_col = Color.WHITE if ring_frac > 0.3 else (UIKit.RED if fmod(t * 3.0, 1.0) < 0.5 else Color.WHITE)
 		Incident.S.ONSCENE:
-			st = "武力不足，请求增援" if inc.stalled else "现场处置中"
-			st_col = UIKit.RED if inc.stalled else UIKit.GREEN
-			frac = clampf(inc.progress, 0, 1)
-			bar_col = UIKit.GREEN
-		Incident.S.DONE:
-			st = "已结案"
-			st_col = UIKit.GREEN
-		Incident.S.FAILED:
-			st = "处置失败"
-			st_col = UIKit.RED
-	draw_string(fb, Vector2(x, 62), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, st_col)
-	var info := "%s  ·  %d/%d" % [UIKit.fmt_min(inc.elapsed(GameState.minutes)), inc.units.size(), int(inc.data().need)]
-	var iw := fr.get_string_size(info, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-	draw_string(fr, Vector2(size.x - iw - 12, 62), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.TEXT_MUTED)
-	if frac >= 0.0:
-		var br := Rect2(x, size.y - 5, size.x - x - 12, 3)
-		UIKit.draw_round_rect(self, br, Color(1, 1, 1, 0.07), 2)
-		if frac > 0.01:
-			UIKit.draw_round_rect(self, Rect2(br.position, Vector2(br.size.x * frac, 3)), bar_col if frac > 0.25 or inc.state == Incident.S.ONSCENE else UIKit.RED, 2)
+			ring_frac = clampf(inc.progress, 0, 1)
+			ring_col = UIKit.GREEN
+		Incident.S.CALL:
+			ring_frac = clampf(1.0 - inc.call_wait / 10.0, 0, 1)
+	if ring_frac >= 0.0:
+		draw_arc(c, R + 4, 0, TAU, 40, Color(1, 1, 1, 0.1), 3.0, true)
+		draw_arc(c, R + 4, -PI / 2, -PI / 2 + TAU * ring_frac, 40, ring_col, 3.0, true)
+
+	# 标题
+	var fb := UIKit.font("bold")
+	var title := "110 来电" if calling else inc.title()
+	draw_string(fb, Vector2(64, 26), title, HORIZONTAL_ALIGNMENT_LEFT, size.x - 64 - 60, 15, UIKit.TEXT if not done else UIKit.TEXT_MUTED)
+
+	# 第二行：出警单位图标（空位用虚线圈表示）
+	var x := 64.0
+	var y := 43.0
+	if calling:
+		UIKit.draw_chip(self, "接听", Vector2(x, y - 10), UIKit.RED, 11)
+	elif done:
+		UIKit.draw_icon(self, "check_circle" if inc.state == Incident.S.DONE else "cancel", Vector2(x + 8, y), 16, col)
+	else:
+		var need := int(inc.data().need)
+		var slots := maxi(need, inc.units.size())
+		for k in slots:
+			var p := Vector2(x + 9 + k * 22, y)
+			if k < inc.units.size():
+				var u: PoliceUnit = inc.units[k]
+				var uc: Color = u.state_color()
+				draw_circle(p, 9, uc)
+				UIKit.draw_icon(self, u.info.gi, p, 12, Color.WHITE)
+			else:
+				_dashed_circle(p, 8.5, UIKit.with_alpha(col, 0.8) if inc.state == Incident.S.WAITING and fmod(t * 2.0, 1.0) < 0.6 else UIKit.TEXT_MUTED)
+		if inc.stalled:
+			UIKit.draw_icon(self, "warning", Vector2(x + slots * 22 + 12, y), 16, UIKit.RED)
+
+	# 右侧：用时
+	var fr := UIKit.font("reg")
+	var el := UIKit.fmt_min(inc.elapsed(GameState.minutes))
+	var w := fr.get_string_size(el, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	draw_string(fr, Vector2(size.x - w - 12, 26), el, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.TEXT_MUTED)
+	if not calling and not done:
+		var lv := "L%d" % inc.level()
+		var lw := fb.get_string_size(lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		draw_string(fb, Vector2(size.x - lw - 12, 47), lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
+
+
+func _dashed_circle(c: Vector2, r: float, col: Color) -> void:
+	var n := 10
+	for k in n:
+		var a0 := TAU * k / n
+		draw_arc(c, r, a0, a0 + TAU / n * 0.55, 4, col, 1.5, true)

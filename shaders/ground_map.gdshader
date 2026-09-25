@@ -29,13 +29,13 @@ void fragment() {
 	c = mix(vec3(0.5, 0.49, 0.46), c, in_world);
 	float d1 = texture(detail, wpos.xz * 0.09).r;
 	float d2 = texture(detail, wpos.xz * 0.013).r;
-	c *= 0.93 + 0.1 * d1 + 0.1 * (d2 - 0.5);
+	c *= 0.985 + 0.03 * d1 + 0.03 * (d2 - 0.5);
 	float ip = inside_play(wpos.xz);
 	float g = dot(c, vec3(0.3, 0.59, 0.11));
-	c = mix(mix(vec3(g), c, 0.3) * 0.6, c, ip);
+	c = mix(mix(vec3(g), c, 0.4) * 0.8, c, ip);
 	vec3 lm = texture(lightmap, clamp(uv, vec2(0.0), vec2(1.0))).rgb * in_world;
 	ALBEDO = c;
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.3;
-	EMISSION = c * lm * night_factor * 2.4 * mix(0.35, 1.0, ip);
+	EMISSION = c * lm * night_factor * 0.55 * mix(0.35, 1.0, ip);
 }

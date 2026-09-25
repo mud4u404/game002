@@ -17,35 +17,28 @@ func _draw() -> void:
 	for p in map.patches:
 		if p.poly.size() >= 3:
 			draw_colored_polygon(p.poly, p.color)
-		if p.has("parking"):
-			_parking(p.parking)
+
 	for t in map.tracks:
 		_track(t)
 	for pa in map.paths:
 		_round_polyline(pa.pts, pa.color, pa.w)
-	# 路缘线
-	for b in map.blocks:
-		var o: PackedVector2Array = b.outer.duplicate()
-		o.append(o[0])
-		draw_polyline(o, CityMap.C_CURB, 0.45, true)
 	# 江岸石砌护岸
 	var rv := map.river_poly.duplicate()
 	if rv.size() > 2:
 		rv.append(rv[0])
-		draw_polyline(rv, CityMap.C_BANK, 5.0, true)
-		draw_polyline(rv, CityMap.C_BANK.darkened(0.25), 1.0, true)
+		draw_polyline(rv, CityMap.C_BANK, 3.0, true)
 	# 道路：先铺所有沥青，再画标线
 	var order := map.roads.duplicate()
 	order.sort_custom(func(a, b): return a.w < b.w)
+	# 路缘描边 → 路面，保证道路在街区上清晰可辨
 	for r in order:
-		_round_polyline(r.pts, CityMap.C_ASPHALT if r.cls != "D" else CityMap.C_ASPHALT_D.lightened(0.12), r.w)
-	for j in map.junctions:
-		if j.r >= 6.0:
-			draw_circle(j.p, j.r - 1.0, CityMap.C_ASPHALT)
+		_round_polyline(r.pts, CityMap.C_CURB, r.w + 1.4)
+	for r in order:
+		_round_polyline(r.pts, CityMap.C_ASPHALT if r.cls != "D" else CityMap.C_ASPHALT_D, r.w)
 	for r in map.roads:
-		_markings(r)
-	for j in map.junctions:
-		_crosswalks(j)
+		if r.cls in ["A", "B"]:
+			var smp := _sample(r)
+			_line(smp, 0.0, CityMap.C_YELLOW, 0.35 if r.cls == "A" else 0.25)
 	_boundary()
 
 
@@ -186,14 +179,6 @@ func _track(t: Dictionary) -> void:
 	var inner := _stadium(t, t.a - 7.0, t.b - 7.0)
 	draw_colored_polygon(outer, CityMap.C_TRACK)
 	draw_colored_polygon(inner, CityMap.C_GRASS)
-	for k in range(1, 6):
-		var lane := _stadium(t, t.a - k * 1.2, t.b - k * 1.2)
-		lane.append(lane[0])
-		draw_polyline(lane, Color(1, 1, 1, 0.75), 0.12, true)
-	var fc := _stadium(t, t.a - 18.0, t.b - 14.0)
-	if fc.size() > 2:
-		fc.append(fc[0])
-		draw_polyline(fc, Color(1, 1, 1, 0.7), 0.15, true)
 
 
 func _boundary() -> void:
