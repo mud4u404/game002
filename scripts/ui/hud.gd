@@ -1,14 +1,18 @@
 class_name HUD
 extends CanvasLayer
-## 指挥大屏 HUD。
+## 游戏界面：地图为主，面板按需出现。
+##   左上：分局与时钟、倍速     右上：经费 / 安全感 / 舆情 / 编制
+##   左侧：警情列表             右侧：选中对象详情 / 警力列表 / 值班统计（按需）
+##   底部：工具栏               左下：电台短讯        底部居中：值班长对话
 
-const LEFT_W := 380.0
-const RIGHT_W := 340.0
-const TOP_H := 64.0
-const RADIO_KIND := {
-	"cmd": Color(0.35, 0.85, 1.0), "unit": Color(0.6, 0.78, 1.0), "call": UIKit.AMBER,
-	"good": UIKit.GREEN, "sys": UIKit.TEXT_DIM, "info": Color(0.75, 0.8, 0.86),
-	"lv1": Color(0.21, 0.88, 1.0), "lv2": Color(1.0, 0.8, 0.28), "lv3": Color(1.0, 0.52, 0.18), "lv4": Color(1.0, 0.23, 0.31),
+const GAP := 16.0
+const TOP := 16.0
+const LEFT_W := 340.0
+const RIGHT_W := 360.0
+const RADIO_COLORS := {
+	"cmd": Color("8fb8ff"), "unit": Color("b9c7d6"), "call": Color("ffb020"),
+	"good": Color("35c98a"), "sys": Color("8a96a3"), "info": Color("b9c7d6"),
+	"lv1": Color("4ea1ff"), "lv2": Color("ffc53d"), "lv3": Color("ff8a24"), "lv4": Color("ff4d4f"),
 }
 
 var game: Game
@@ -17,29 +21,40 @@ var markers: MarkerLayer
 var call_panel: CallPanel
 var recruit_panel: RecruitPanel
 
-var _inc_panel: TechPanel
-var _inc_list: VBoxContainer
-var _cards := {}
-var _unit_panel: TechPanel
-var _unit_list: VBoxContainer
-var _rows := {}
-var _radio: RichTextLabel
-var _radio_lines: Array = []
-var _ctx: TechPanel
-var _ctx_body: VBoxContainer
-var _ctx_fields := {}
-var _ctx_obj = null
+var _status: PanelContainer
 var _clock: Label
 var _day: Label
+var _speed_btns: Array = []
+var _res: PanelContainer
 var _money: Label
 var _safety: Label
 var _opinion: Label
 var _staff: Label
 var _safety_bar: MeterBar
 var _opinion_bar: MeterBar
-var _speed_btns: Array = []
-var _auto_btn: Button
-var _advisor: Control
+
+var _inc_panel: TechPanel
+var _inc_list: VBoxContainer
+var _inc_empty: Label
+var _cards := {}
+
+var _right: TechPanel
+var _right_mode := ""          # select / units / stats
+var _right_body: VBoxContainer
+var _fields := {}
+var _ctx_obj = null
+
+var _dock: PanelContainer
+var _dock_btns := {}
+var _call_badge: Label
+
+var _ticker: VBoxContainer
+var _log_panel: TechPanel
+var _log: RichTextLabel
+var _log_lines: Array = []
+var _recent: Array = []        # [entry, time]
+
+var _advisor: PanelContainer
 var _advisor_text: Label
 var _advisor_queue: Array = []
 var _advisor_t := 0.0
@@ -58,7 +73,6 @@ func setup(p_game: Game) -> void:
 	markers = MarkerLayer.new()
 	markers.game = game
 	root.add_child(markers)
-
 	var vig := ColorRect.new()
 	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -67,161 +81,78 @@ func setup(p_game: Game) -> void:
 	vig.material = vm
 	root.add_child(vig)
 
-	_build_top_bar()
+	_build_status()
+	_build_resources()
 	_build_incidents()
-	_build_units()
+	_build_right()
+	_build_dock()
 	_build_radio()
-	_build_context()
 	_build_advisor()
-
 	call_panel = CallPanel.new(game)
 	root.add_child(call_panel)
 	recruit_panel = RecruitPanel.new(game)
 	root.add_child(recruit_panel)
 
 	GameState.radio.connect(_on_radio)
-	GameState.advisor.connect(_on_advisor)
+	GameState.advisor.connect(func(t): _advisor_queue.append(t))
 	GameState.speed_changed.connect(func(_s): _update_speed_btns())
 	game.incident_added.connect(_on_inc_added)
 	game.incident_removed.connect(_on_inc_removed)
-	game.units_changed.connect(_sync_units)
+	game.units_changed.connect(func(): if _right_mode == "units": _show_units())
 	game.selection_changed.connect(_on_selection)
-	_sync_units()
-	_on_selection(null)
 	_update_speed_btns()
+	_set_right("")
 
 
-# ------------------------------------------------------------------ 顶栏
-func _build_top_bar() -> void:
-	var bar := Control.new()
-	bar.name = "TopBar"
-	bar.position = Vector2.ZERO
-	bar.size = Vector2(1920, TOP_H)
-	bar.mouse_filter = Control.MOUSE_FILTER_STOP
-	bar.draw.connect(func():
-		var w := bar.size.x
-		bar.draw_rect(Rect2(0, 0, w, TOP_H), Color(0.01, 0.025, 0.045, 0.94))
-		bar.draw_line(Vector2(0, TOP_H), Vector2(w, TOP_H), UIKit.with_alpha(UIKit.CYAN, 0.35), 1.0)
-		bar.draw_rect(Rect2(0, TOP_H - 2, 420, 2), UIKit.CYAN)
-		_draw_emblem(bar, Vector2(34, TOP_H * 0.5)))
-	root.add_child(bar)
-
+# ================================================================== 左上：分局与时钟
+func _build_status() -> void:
+	_status = PanelContainer.new()
+	_status.add_theme_stylebox_override("panel", UIKit.panel_box(12, UIKit.BG, 10))
+	_status.position = Vector2(GAP, TOP)
+	root.add_child(_status)
 	var h := HBoxContainer.new()
-	h.name = "Row"
-	h.position = Vector2(62, 0)
-	h.size = Vector2(1920 - 80, TOP_H)
-	h.add_theme_constant_override("separation", 22)
-	h.alignment = BoxContainer.ALIGNMENT_BEGIN
-	bar.add_child(h)
-
-	var titles := VBoxContainer.new()
-	titles.alignment = BoxContainer.ALIGNMENT_CENTER
-	titles.add_theme_constant_override("separation", -2)
-	titles.add_child(UIKit.label("江城市公安局 · 滨江分局", 18, UIKit.TEXT, "bold"))
-	titles.add_child(UIKit.tag("JIANGCHENG PSB · COMMAND CENTER 指挥中心", UIKit.with_alpha(UIKit.CYAN, 0.7), 11))
-	h.add_child(titles)
-
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(sp)
-
-	# 时钟与倍速
-	var clock_box := HBoxContainer.new()
-	clock_box.add_theme_constant_override("separation", 12)
-	clock_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	var cv := VBoxContainer.new()
-	cv.alignment = BoxContainer.ALIGNMENT_CENTER
-	cv.add_theme_constant_override("separation", -6)
-	_day = UIKit.tag("DAY 1", UIKit.with_alpha(UIKit.CYAN, 0.8), 12)
-	_clock = UIKit.label("19:40", 32, Color.WHITE, "num_bold")
-	cv.add_child(_day)
-	cv.add_child(_clock)
-	clock_box.add_child(cv)
-	for s in [0.0, 1.0, 2.0, 4.0]:
-		var b := UIKit.button("", 13)
-		b.custom_minimum_size = Vector2(44, 32)
+	h.add_theme_constant_override("separation", 12)
+	_status.add_child(h)
+	var badge := Control.new()
+	badge.custom_minimum_size = Vector2(40, 40)
+	badge.draw.connect(func():
+		UIKit.draw_round_rect(badge, Rect2(0, 0, 40, 40), UIKit.NAVY, 9)
+		UIKit.draw_icon(badge, "local_police", Vector2(20, 20), 24, Color.WHITE))
+	h.add_child(badge)
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", -3)
+	names.alignment = BoxContainer.ALIGNMENT_CENTER
+	names.add_child(UIKit.label("滨江分局", 16, UIKit.TEXT, "bold"))
+	names.add_child(UIKit.label("江城市公安局 · 指挥中心", 11, UIKit.TEXT_MUTED))
+	h.add_child(names)
+	h.add_child(_vsep())
+	var tv := VBoxContainer.new()
+	tv.add_theme_constant_override("separation", -5)
+	tv.alignment = BoxContainer.ALIGNMENT_CENTER
+	_clock = UIKit.label("17:10", 24, Color.WHITE, "bold")
+	_day = UIKit.label("", 11, UIKit.TEXT_MUTED)
+	tv.add_child(_clock)
+	tv.add_child(_day)
+	h.add_child(tv)
+	var sb := HBoxContainer.new()
+	sb.add_theme_constant_override("separation", 2)
+	sb.alignment = BoxContainer.ALIGNMENT_CENTER
+	for pair in [[0.0, "pause", "暂停  P"], [1.0, "play_arrow", "正常速度  1"], [2.0, "fast_forward", "2 倍速  2"], [4.0, "keyboard_double_arrow_right", "4 倍速  3"]]:
+		var b := UIKit.icon_button(pair[1], pair[2], 20)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		b.draw.connect(_draw_speed_icon.bind(b, s))
-		b.pressed.connect(func(): GameState.set_speed(s))
-		b.tooltip_text = ["暂停 (P)", "1× (1)", "2× (2)", "4× (3)"][[0.0, 1.0, 2.0, 4.0].find(s)]
-		clock_box.add_child(b)
-		_speed_btns.append([b, s])
-	h.add_child(clock_box)
-
-	var sp2 := Control.new()
-	sp2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(sp2)
-
-	_money = _stat(h, "经费", "BUDGET")
-	var sb: Array = _stat(h, "群众安全感", "SAFETY", true)
-	_safety = sb[0]
-	_safety_bar = sb[1]
-	var ob: Array = _stat(h, "舆情", "OPINION", true)
-	_opinion = ob[0]
-	_opinion_bar = ob[1]
-	_staff = _stat(h, "警力编制", "STAFF")
-
-	_auto_btn = UIKit.button("自动派警  开", 14)
-	_auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_auto_btn.custom_minimum_size = Vector2(0, 36)
-	_auto_btn.tooltip_text = "关闭后，所有警情都需要手动调度"
-	_auto_btn.pressed.connect(func():
-		GameState.auto_dispatch = not GameState.auto_dispatch
-		_auto_btn.text = "自动派警  " + ("开" if GameState.auto_dispatch else "关"))
-	h.add_child(_auto_btn)
-	var rb := UIKit.accent_button("警力部署  R", UIKit.AMBER, 14)
-	rb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	rb.custom_minimum_size = Vector2(0, 36)
-	rb.pressed.connect(toggle_recruit)
-	h.add_child(rb)
+		var sp: float = pair[0]
+		b.pressed.connect(func(): GameState.set_speed(sp))
+		sb.add_child(b)
+		_speed_btns.append([b, sp])
+	h.add_child(sb)
 
 
-func _stat(parent: HBoxContainer, name: String, tag: String, with_bar := false):
-	var v := VBoxContainer.new()
-	v.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_theme_constant_override("separation", 0)
-	var th := HBoxContainer.new()
-	th.add_theme_constant_override("separation", 6)
-	th.add_child(UIKit.label(name, 12, UIKit.TEXT_DIM))
-	th.add_child(UIKit.tag(tag, UIKit.with_alpha(UIKit.CYAN, 0.5), 10))
-	v.add_child(th)
-	var val := UIKit.label("", 20, Color.WHITE, "num_bold")
-	v.add_child(val)
-	parent.add_child(v)
-	if with_bar:
-		var bar := MeterBar.new(UIKit.CYAN, 4, 16)
-		bar.custom_minimum_size = Vector2(110, 4)
-		v.add_child(bar)
-		return [val, bar]
-	return val
-
-
-func _draw_emblem(ci: Control, c: Vector2) -> void:
-	var s := 18.0
-	var pts := PackedVector2Array([c + Vector2(0, -s), c + Vector2(s * 0.85, -s * 0.6), c + Vector2(s * 0.75, s * 0.25),
-		c + Vector2(0, s), c + Vector2(-s * 0.75, s * 0.25), c + Vector2(-s * 0.85, -s * 0.6)])
-	ci.draw_colored_polygon(pts, Color(0.05, 0.16, 0.4))
-	var ol := pts.duplicate()
-	ol.append(pts[0])
-	ci.draw_polyline(ol, UIKit.CYAN, 2.0, true)
-	var f := UIKit.font("num_bold")
-	var w := f.get_string_size("110", HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-	ci.draw_string(f, c + Vector2(-w * 0.5, 5), "110", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
-
-
-func _draw_speed_icon(b: Button, s: float) -> void:
-	var active := (GameState.paused and s == 0.0) or (not GameState.paused and s == GameState.speed)
-	var col := Color(0.02, 0.06, 0.1) if active else UIKit.TEXT
-	var c := b.size * 0.5
-	if s == 0.0:
-		b.draw_rect(Rect2(c + Vector2(-6, -7), Vector2(4, 14)), col)
-		b.draw_rect(Rect2(c + Vector2(2, -7), Vector2(4, 14)), col)
-		return
-	var n := int(s) if s < 4.0 else 3
-	var total := n * 8.0
-	for k in n:
-		var x := c.x - total * 0.5 + k * 8.0
-		b.draw_colored_polygon(PackedVector2Array([Vector2(x, c.y - 7), Vector2(x + 9, c.y), Vector2(x, c.y + 7)]), col)
+func _vsep() -> Control:
+	var c := ColorRect.new()
+	c.color = UIKit.LINE
+	c.custom_minimum_size = Vector2(1, 30)
+	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return c
 
 
 func _update_speed_btns() -> void:
@@ -229,21 +160,69 @@ func _update_speed_btns() -> void:
 		var b: Button = pair[0]
 		var s: float = pair[1]
 		var active := (GameState.paused and s == 0.0) or (not GameState.paused and s == GameState.speed)
-		b.button_pressed = false
-		b.add_theme_stylebox_override("normal", UIKit.button_box("pressed" if active else "normal"))
-		b.queue_redraw()
+		for state in ["normal", "hover"]:
+			var box := UIKit.button_box(state, "active" if active else "ghost")
+			box.content_margin_left = 6
+			box.content_margin_right = 6
+			box.content_margin_top = 4
+			box.content_margin_bottom = 4
+			b.add_theme_stylebox_override(state, box)
 
 
-# ------------------------------------------------------------------ 左：警情队列
+# ================================================================== 右上：资源
+func _build_resources() -> void:
+	_res = PanelContainer.new()
+	_res.add_theme_stylebox_override("panel", UIKit.panel_box(12, UIKit.BG, 10))
+	root.add_child(_res)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 16)
+	_res.add_child(h)
+	_money = _res_item(h, "payments", "经费", UIKit.GREEN)[0]
+	h.add_child(_vsep())
+	var s: Array = _res_item(h, "health_and_safety", "群众安全感", UIKit.ACCENT, true)
+	_safety = s[0]
+	_safety_bar = s[1]
+	h.add_child(_vsep())
+	var o: Array = _res_item(h, "campaign", "舆情", UIKit.AMBER, true)
+	_opinion = o[0]
+	_opinion_bar = o[1]
+	h.add_child(_vsep())
+	_staff = _res_item(h, "badge", "警力编制", UIKit.TEXT_DIM)[0]
+
+
+func _res_item(parent: HBoxContainer, icon_name: String, tip: String, col: Color, bar := false) -> Array:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	h.tooltip_text = tip
+	h.mouse_filter = Control.MOUSE_FILTER_PASS
+	var ic := UIKit.icon_label(icon_name, 22, col)
+	h.add_child(ic)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(UIKit.label(tip, 11, UIKit.TEXT_MUTED))
+	var val := UIKit.label("", 17, Color.WHITE, "bold")
+	v.add_child(val)
+	var mb: MeterBar = null
+	if bar:
+		mb = MeterBar.new(col, 3, 1)
+		mb.custom_minimum_size = Vector2(84, 3)
+		v.add_child(mb)
+	h.add_child(v)
+	parent.add_child(h)
+	return [val, mb]
+
+
+# ================================================================== 左侧：警情
 func _build_incidents() -> void:
-	_inc_panel = TechPanel.new("警情队列", "INCIDENT QUEUE", UIKit.CYAN)
-	_inc_panel.position = Vector2(16, TOP_H + 14)
-	_inc_panel.custom_minimum_size = Vector2(LEFT_W, 560)
+	_inc_panel = TechPanel.new("警情", "notifications")
 	root.add_child(_inc_panel)
+	_inc_empty = UIKit.label("辖区平稳，暂无警情", 13, UIKit.TEXT_MUTED)
+	_inc_empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_inc_panel.body.add_child(_inc_empty)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(0, 500)
 	_inc_panel.body.add_child(scroll)
 	_inc_list = VBoxContainer.new()
 	_inc_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -291,280 +270,280 @@ func open_call(inc: Incident) -> void:
 	call_panel.open(inc)
 
 
-# ------------------------------------------------------------------ 右：警力
-func _build_units() -> void:
-	_unit_panel = TechPanel.new("警力态势", "UNITS", UIKit.CYAN)
-	_unit_panel.custom_minimum_size = Vector2(RIGHT_W, 560)
-	root.add_child(_unit_panel)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(0, 500)
-	_unit_panel.body.add_child(scroll)
-	_unit_list = VBoxContainer.new()
-	_unit_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_unit_list.add_theme_constant_override("separation", 3)
-	scroll.add_child(_unit_list)
+# ================================================================== 右侧：详情 / 警力 / 统计
+func _build_right() -> void:
+	_right = TechPanel.new("详情", "info", UIKit.ACCENT, true)
+	_right.closed.connect(func():
+		if _right_mode == "select":
+			game.select(null)
+		_set_right(""))
+	root.add_child(_right)
+	_right_body = _right.body
 
 
-func _sync_units() -> void:
-	for c in _unit_list.get_children():
+func _set_right(mode: String) -> void:
+	_right_mode = mode
+	_right.visible = mode != ""
+	for c in _right_body.get_children():
 		c.queue_free()
-	_rows.clear()
-	var by_kind := {}
-	for u in game.units:
-		if not by_kind.has(u.kind):
-			by_kind[u.kind] = []
-		by_kind[u.kind].append(u)
-	for kind in Data.UNIT_TYPES.keys():
-		if not by_kind.has(kind):
-			continue
-		var head := HBoxContainer.new()
-		var hl := UIKit.label(Data.UNIT_TYPES[kind].name, 13, UIKit.with_alpha(UIKit.CYAN, 0.85), "bold")
-		head.add_child(hl)
-		var sp := Control.new()
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		head.add_child(sp)
-		head.add_child(UIKit.tag("×%d" % by_kind[kind].size(), UIKit.TEXT_DIM, 12))
-		var mc := MarginContainer.new()
-		mc.add_theme_constant_override("margin_top", 6)
-		mc.add_child(head)
-		_unit_list.add_child(mc)
-		for u in by_kind[kind]:
-			var row := UnitRow.new(u, game)
-			row.pressed.connect(func(unit):
-				game.select(unit)
-				game.cam.focus_on(unit.global_position))
-			_unit_list.add_child(row)
-			_rows[u] = row
-
-
-# ------------------------------------------------------------------ 电台
-func _build_radio() -> void:
-	var p := TechPanel.new("电台", "RADIO · 350MHz 指挥频道", UIKit.CYAN)
-	p.custom_minimum_size = Vector2(640, 238)
-	p.name = "Radio"
-	root.add_child(p)
-	_radio = RichTextLabel.new()
-	_radio.bbcode_enabled = true
-	_radio.scroll_following = true
-	_radio.fit_content = false
-	_radio.custom_minimum_size = Vector2(0, 176)
-	_radio.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_radio.add_theme_font_override("normal_font", UIKit.font("reg"))
-	_radio.add_theme_font_override("bold_font", UIKit.font("bold"))
-	_radio.add_theme_font_override("mono_font", UIKit.font("mono"))
-	_radio.add_theme_font_size_override("normal_font_size", 14)
-	_radio.add_theme_font_size_override("bold_font_size", 14)
-	_radio.add_theme_font_size_override("mono_font_size", 14)
-	_radio.add_theme_color_override("default_color", UIKit.TEXT)
-	_radio.add_theme_constant_override("line_separation", 5)
-	_radio.mouse_filter = Control.MOUSE_FILTER_PASS
-	p.body.add_child(_radio)
-
-
-func _on_radio(e: Dictionary) -> void:
-	var c: Color = RADIO_KIND.get(e.kind, UIKit.TEXT)
-	var from_c: Color = c if e.kind != "unit" else Color(0.6, 0.78, 1.0)
-	var line := "[color=#5d7285][code]%s[/code][/color]  [b][color=#%s]%s[/color][/b]  [color=#%s]%s[/color]" % [
-		e.time, from_c.to_html(false), e.from, (c if e.kind.begins_with("lv") or e.kind == "good" else UIKit.TEXT).to_html(false), e.text]
-	_radio_lines.append(line)
-	if _radio_lines.size() > 80:
-		_radio_lines.pop_front()
-	_radio.text = "\n".join(_radio_lines)
-
-
-# ------------------------------------------------------------------ 上下文面板
-func _build_context() -> void:
-	_ctx = TechPanel.new("值班概况", "OVERVIEW", UIKit.CYAN)
-	_ctx.custom_minimum_size = Vector2(460, 238)
-	root.add_child(_ctx)
-	_ctx_body = _ctx.body
+	_fields.clear()
+	_update_dock()
 
 
 func _on_selection(obj) -> void:
 	_ctx_obj = obj
-	for c in _ctx_body.get_children():
-		c.queue_free()
-	_ctx_fields.clear()
+	if obj == null:
+		if _right_mode == "select":
+			_set_right("")
+		return
+	_set_right("select")
 	if obj is Incident:
-		_ctx._title_label.text = "警情 #%03d" % obj.id
-		_ctx._sub_label.text = "INCIDENT DETAIL"
 		_ctx_incident(obj)
 	elif obj is PoliceUnit:
-		_ctx._title_label.text = obj.callsign
-		_ctx._sub_label.text = "UNIT DETAIL · " + obj.info.name
 		_ctx_unit(obj)
 	elif obj is Dictionary:
-		_ctx._title_label.text = obj.name
-		_ctx._sub_label.text = "FACILITY · " + Data.FACILITY_TYPES[obj.type].name
 		_ctx_facility(obj)
-	else:
-		_ctx._title_label.text = "值班概况"
-		_ctx._sub_label.text = "SHIFT OVERVIEW"
-		_ctx_overview()
-	_refresh_ctx()
+	_refresh_right()
 
 
-func _kv(key: String, id: String, parent: Control = null) -> Label:
+func _row(icon_name: String, key: String, id: String, parent: Control = null) -> Label:
 	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	h.add_child(UIKit.icon_label(icon_name, 16, UIKit.TEXT_MUTED))
 	var k := UIKit.label(key, 13, UIKit.TEXT_DIM)
-	k.custom_minimum_size = Vector2(84, 0)
+	k.custom_minimum_size = Vector2(66, 0)
 	h.add_child(k)
-	var v := UIKit.label("", 14, UIKit.TEXT)
+	var v := UIKit.label("", 13, UIKit.TEXT, "bold")
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.clip_text = true
+	v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	h.add_child(v)
-	(parent if parent else _ctx_body).add_child(h)
-	_ctx_fields[id] = v
+	(parent if parent else _right_body).add_child(h)
+	_fields[id] = v
 	return v
 
 
-func _grid2() -> Array:
-	var g := HBoxContainer.new()
-	g.add_theme_constant_override("separation", 16)
-	var a := VBoxContainer.new()
-	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var b := VBoxContainer.new()
-	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	g.add_child(a)
-	g.add_child(b)
-	_ctx_body.add_child(g)
-	return [a, b]
+func _header(icon_name: String, color: Color, title: String, sub: String) -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	var ic := Control.new()
+	ic.custom_minimum_size = Vector2(48, 48)
+	ic.draw.connect(func():
+		ic.draw_circle(Vector2(24, 24), 24, UIKit.with_alpha(color, 0.18))
+		UIKit.draw_icon(ic, icon_name, Vector2(24, 24), 28, color))
+	_fields["hicon"] = ic
+	h.add_child(ic)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var t := UIKit.label(title, 18, UIKit.TEXT, "bold")
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fields["title"] = t
+	v.add_child(t)
+	var s := UIKit.label(sub, 12, UIKit.TEXT_DIM)
+	s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fields["sub"] = s
+	v.add_child(s)
+	h.add_child(v)
+	_right_body.add_child(h)
+
+
+func _sep() -> void:
+	var c := ColorRect.new()
+	c.color = UIKit.LINE
+	c.custom_minimum_size = Vector2(0, 1)
+	_right_body.add_child(c)
+
+
+func _actions(buttons: Array) -> void:
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 8)
+	g.add_theme_constant_override("v_separation", 8)
+	for b in buttons:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		g.add_child(b)
+	_right_body.add_child(g)
 
 
 func _ctx_incident(inc: Incident) -> void:
-	var t := UIKit.label("", 22, UIKit.TEXT, "bold")
-	_ctx_body.add_child(t)
-	_ctx_fields["title"] = t
-	var loc := UIKit.label(inc.desc(), 13, UIKit.TEXT_DIM)
-	_ctx_body.add_child(loc)
-	var g := _grid2()
-	_kv("状态", "state", g[0])
-	_kv("已用时", "elapsed", g[0])
-	_kv("需求警力", "need", g[1])
-	_kv("升级时限", "deadline", g[1])
-	_kv("现场警力", "units")
-	var bar := MeterBar.new(UIKit.GREEN, 5, 30)
+	_right.set_title("警情详情", "#%03d" % inc.id, "notifications")
+	_header(inc.data().gi, Data.level_color(inc.level()), inc.title(), inc.desc())
+	_sep()
+	_row("info", "状态", "state")
+	_row("schedule", "已用时", "elapsed")
+	_row("timer", "升级时限", "deadline")
+	_row("groups", "需求警力", "need")
+	_row("local_police", "出警单位", "units")
+	var bar := MeterBar.new(UIKit.GREEN, 5, 1)
 	bar.custom_minimum_size = Vector2(0, 5)
-	_ctx_body.add_child(bar)
-	_ctx_fields["bar"] = bar
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
+	_right_body.add_child(bar)
+	_fields["bar"] = bar
+	var btns := []
 	if inc.state == Incident.S.CALL:
-		var cb := UIKit.accent_button("接警研判  SPACE", UIKit.AMBER, 14)
+		var cb := UIKit.icon_text_button("phone_in_talk", "接听来电", "primary", UIKit.RED)
 		cb.pressed.connect(func(): open_call(inc))
-		h.add_child(cb)
-	var add := UIKit.button("增派最近单位", 14)
+		btns.append(cb)
+	var add := UIKit.icon_text_button("add_circle", "增派警力", "primary")
 	add.pressed.connect(func():
 		var u := game.best_unit(inc, 0)
 		if u:
 			game.assign(u, inc, true)
 		else:
 			GameState.post("指挥中心", "暂无可调派的空闲警力。", "info"))
-	h.add_child(add)
-	var fb := UIKit.accent_button("定位  F", UIKit.TEXT_DIM, 14)
+	btns.append(add)
+	var fb := UIKit.icon_text_button("my_location", "定位")
 	fb.pressed.connect(func(): game.cam.focus_on(inc.spot.pos, 220))
-	h.add_child(fb)
-	_ctx_body.add_child(h)
+	btns.append(fb)
+	_actions(btns)
 
 
 func _ctx_unit(u: PoliceUnit) -> void:
-	var g := _grid2()
-	_kv("编组", "crew", g[0])
-	_kv("带班民警", "leader", g[0])
-	_kv("状态", "state", g[0])
-	_kv("警衔", "rank", g[1])
-	_kv("等级", "level", g[1])
-	_kv("武力", "force", g[1])
-	_kv("当前任务", "task")
+	_right.set_title("警力详情", u.info.name, "local_police")
+	_header(u.info.gi, u.state_color(), u.callsign, "%s · %s %s" % [u.info.crew, u.rank, u.leader])
+	_sep()
+	_row("info", "状态", "state")
+	_row("assignment", "当前任务", "task")
+	_row("trending_up", "等级", "level")
+	_row("shield", "武力等级", "force")
 	var fh := HBoxContainer.new()
-	fh.add_child(UIKit.label("疲劳度", 13, UIKit.TEXT_DIM))
-	var bar := MeterBar.new(UIKit.AMBER, 6, 24)
+	fh.add_theme_constant_override("separation", 8)
+	fh.add_child(UIKit.icon_label("speed", 16, UIKit.TEXT_MUTED))
+	var k := UIKit.label("体力", 13, UIKit.TEXT_DIM)
+	k.custom_minimum_size = Vector2(66, 0)
+	fh.add_child(k)
+	var bar := MeterBar.new(UIKit.GREEN, 6, 1)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	fh.add_child(bar)
-	_ctx_fields["fat"] = bar
-	_ctx_body.add_child(fh)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	var rb := UIKit.button("返回驻地", 14)
-	rb.pressed.connect(func(): game.recall(u))
-	h.add_child(rb)
+	_fields["fat"] = bar
+	_right_body.add_child(fh)
+	var btns := []
 	if u.info.patrol:
-		var pb := UIKit.button("恢复巡逻", 14)
+		var pb := UIKit.icon_text_button("route", "恢复巡逻", "primary")
 		pb.pressed.connect(func(): game.patrol(u))
-		h.add_child(pb)
-	var fb := UIKit.accent_button("定位  F", UIKit.TEXT_DIM, 14)
+		btns.append(pb)
+	var rb := UIKit.icon_text_button("garage_home", "返回驻地")
+	rb.pressed.connect(func(): game.recall(u))
+	btns.append(rb)
+	var fb := UIKit.icon_text_button("my_location", "定位")
 	fb.pressed.connect(func(): game.cam.focus_on(u.global_position, 220))
-	h.add_child(fb)
-	_ctx_body.add_child(h)
-	var hint := UIKit.label("右键警情：手动派警　右键路面：机动布控", 12, UIKit.TEXT_DIM)
-	_ctx_body.add_child(hint)
+	btns.append(fb)
+	_actions(btns)
+	var hint := UIKit.label("右键点击警情：手动派警\n右键点击路面：机动布控", 12, UIKit.TEXT_MUTED)
+	_right_body.add_child(hint)
 
 
 func _ctx_facility(f: Dictionary) -> void:
-	_kv("驻地警力", "units")
-	_kv("车位", "spots")
-	var kinds: Array = Data.FACILITY_TYPES[f.type].units
-	for kind in kinds:
-		var btn := UIKit.accent_button("招募 %s  %s" % [Data.UNIT_TYPES[kind].name, Data.money_str(Data.UNIT_TYPES[kind].cost)], UIKit.AMBER, 14)
+	var ft: Dictionary = Data.FACILITY_TYPES[f.type]
+	_right.set_title("设施", ft.name, "apartment")
+	_header(ft.gi, UIKit.ACCENT, f.name, "江城市公安局滨江分局")
+	_sep()
+	_row("groups", "驻地警力", "units")
+	_row("local_parking", "车位", "spots")
+	for kind in ft.units:
+		var d: Dictionary = Data.UNIT_TYPES[kind]
+		var btn := UIKit.icon_text_button("person_add", "招募%s  %s" % [d.name, Data.money_str(d.cost)], "primary")
 		btn.pressed.connect(func():
 			game.recruit(kind)
-			_refresh_ctx())
-		_ctx_body.add_child(btn)
-		_ctx_fields["recruit_btn"] = btn
-		_ctx_fields["recruit_kind"] = kind
+			_refresh_right())
+		_right_body.add_child(btn)
+		_fields["recruit_btn"] = btn
+		_fields["recruit_kind"] = kind
 
 
-func _ctx_overview() -> void:
-	var g := _grid2()
-	_kv("接警总数", "total", g[0])
-	_kv("已结案", "resolved", g[0])
-	_kv("处置失败", "failed", g[0])
-	_kv("平均到场", "avg", g[1])
-	_kv("圆满处置", "perfect", g[1])
-	_kv("研判准确", "calls", g[1])
-	var hint := UIKit.label("点击地图上的警情、单位或设施查看详情。滚轮缩放，拖拽平移。", 12, UIKit.TEXT_DIM)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_ctx_body.add_child(hint)
+func _show_units() -> void:
+	_set_right("units")
+	_right.set_title("警力", "%d 组" % game.units.size(), "groups")
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_right_body.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 5)
+	scroll.add_child(list)
+	for kind in Data.UNIT_TYPES.keys():
+		var group := game.units.filter(func(x): return x.kind == kind)
+		if group.is_empty():
+			continue
+		var head := HBoxContainer.new()
+		head.add_child(UIKit.label(Data.UNIT_TYPES[kind].name, 12, UIKit.TEXT_MUTED, "bold"))
+		var sp := Control.new()
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(sp)
+		head.add_child(UIKit.label("%d" % group.size(), 12, UIKit.TEXT_MUTED))
+		list.add_child(head)
+		for u in group:
+			var row := UnitRow.new(u, game)
+			row.pressed.connect(func(unit):
+				game.cam.focus_on(unit.global_position)
+				game.select(unit))
+			list.add_child(row)
+
+
+func _show_stats() -> void:
+	_set_right("stats")
+	_right.set_title("值班统计", "第 %d 天" % GameState.day(), "bar_chart")
+	_row("notifications", "接警总数", "total")
+	_row("check_circle", "已结案", "resolved")
+	_row("sentiment_satisfied", "圆满处置", "perfect")
+	_row("cancel", "处置失败", "failed")
+	_row("timer", "平均到场", "avg")
+	_row("phone_in_talk", "研判准确", "calls")
+	_refresh_right()
 
 
 func _setf(id: String, text: String, col := Color(-1, 0, 0)) -> void:
-	if _ctx_fields.has(id):
-		var l: Label = _ctx_fields[id]
+	if _fields.has(id) and _fields[id] is Label:
+		var l: Label = _fields[id]
 		l.text = text
 		if col.r >= 0:
 			l.add_theme_color_override("font_color", col)
 
 
-func _refresh_ctx() -> void:
+func _refresh_right() -> void:
+	if _right_mode == "stats":
+		var st := GameState.stats
+		_setf("total", str(st.total))
+		_setf("resolved", str(st.resolved), UIKit.GREEN)
+		_setf("perfect", str(st.perfect))
+		_setf("failed", str(st.failed), UIKit.RED if st.failed > 0 else UIKit.TEXT)
+		_setf("avg", (UIKit.fmt_min(GameState.avg_response()) + " 分钟") if st.resp_n > 0 else "—")
+		_setf("calls", ("%d / %d" % [st.calls_ok, st.calls_total]) if st.calls_total > 0 else "—")
+		return
+	if _right_mode != "select":
+		return
 	var obj = _ctx_obj
 	if obj is Incident:
 		var inc: Incident = obj
 		var col := Data.level_color(inc.level())
-		_setf("title", ("110 来电 · 待研判" if inc.state == Incident.S.CALL else inc.title()) + "　L%d %s" % [inc.level(), Data.level_name(inc.level())], col)
-		_setf("state", Incident.STATE_NAMES[inc.state] + ("（武力不足）" if inc.stalled else ""), UIKit.RED if inc.stalled else col)
-		_setf("elapsed", UIKit.fmt_min(inc.elapsed(GameState.minutes)))
+		_setf("title", ("110 来电 · 待研判" if inc.state == Incident.S.CALL else inc.title()), UIKit.TEXT)
+		_setf("sub", "%s · %s警情" % [inc.desc(), Data.level_name(inc.level())])
+		if _fields.has("hicon"):
+			_fields["hicon"].queue_redraw()
+		var st_txt: String = Incident.STATE_NAMES[inc.state]
+		if inc.stalled:
+			st_txt = "武力不足，请求增援"
+		_setf("state", st_txt, UIKit.RED if inc.stalled else col)
+		_setf("elapsed", UIKit.fmt_min(inc.elapsed(GameState.minutes)) + " 分钟")
+		_setf("deadline", (UIKit.fmt_min(inc.deadline) + " 分钟") if inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE] else "—")
 		_setf("need", "%d 组 · 武力 ≥ %d" % [int(inc.data().need), int(inc.data().force)])
-		_setf("deadline", UIKit.fmt_min(inc.deadline) if inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE] else "—")
 		var names := []
 		for u in inc.units:
-			names.append("%s(%s)" % [u.callsign, "到场" if u.state == PoliceUnit.State.ONSCENE else UIKit.fmt_min(u.eta_min)])
+			names.append("%s（%s）" % [u.callsign, "已到场" if u.state == PoliceUnit.State.ONSCENE else "约 %d 分钟" % ceili(u.eta_min)])
 		_setf("units", "、".join(names) if not names.is_empty() else "暂无")
-		if _ctx_fields.has("bar"):
-			_ctx_fields["bar"].set_value(inc.progress)
+		if _fields.has("bar"):
+			_fields["bar"].set_value(inc.progress)
 	elif obj is PoliceUnit:
 		var u: PoliceUnit = obj
-		_setf("crew", u.info.crew)
-		_setf("leader", u.leader)
-		_setf("state", u.state_name(), u.state_color())
-		_setf("rank", u.rank)
+		_setf("state", u.state_name() + ("（轮休）" if u.resting else ""), u.state_color())
+		_setf("task", (u.incident.title() + " · " + u.incident.desc()) if u.incident else "—")
 		_setf("level", "Lv.%d" % u.level)
 		_setf("force", "%d / 4" % u.force())
-		_setf("task", (u.incident.title() + " · " + u.incident.desc()) if u.incident else "—")
-		if _ctx_fields.has("fat"):
-			_ctx_fields["fat"].set_value(u.fatigue / 100.0, UIKit.GREEN if u.fatigue < 50 else (UIKit.AMBER if u.fatigue < 80 else UIKit.RED))
+		if _fields.has("fat"):
+			var hp := 1.0 - u.fatigue / 100.0
+			_fields["fat"].set_value(hp, UIKit.GREEN if hp > 0.5 else (UIKit.AMBER if hp > 0.2 else UIKit.RED))
 	elif obj is Dictionary:
 		var n := 0
 		var busy := 0
@@ -575,66 +554,212 @@ func _refresh_ctx() -> void:
 					busy += 1
 		_setf("units", "%d 组（出警 %d）" % [n, busy])
 		_setf("spots", "%d / %d" % [n, obj.spots.size()])
-		if _ctx_fields.has("recruit_btn"):
-			var reason := game.can_recruit(_ctx_fields["recruit_kind"])
-			_ctx_fields["recruit_btn"].disabled = reason != ""
-			_ctx_fields["recruit_btn"].tooltip_text = reason
-	else:
-		var st := GameState.stats
-		_setf("total", str(st.total))
-		_setf("resolved", str(st.resolved), UIKit.GREEN)
-		_setf("failed", str(st.failed), UIKit.RED if st.failed > 0 else UIKit.TEXT)
-		_setf("avg", UIKit.fmt_min(GameState.avg_response()) if st.resp_n > 0 else "—")
-		_setf("perfect", str(st.perfect))
-		_setf("calls", ("%d / %d" % [st.calls_ok, st.calls_total]) if st.calls_total > 0 else "—")
+		if _fields.has("recruit_btn"):
+			var reason := game.can_recruit(_fields["recruit_kind"])
+			_fields["recruit_btn"].disabled = reason != ""
+			_fields["recruit_btn"].tooltip_text = reason
 
 
-# ------------------------------------------------------------------ 值班长对讲
+# ================================================================== 底部工具栏
+func _build_dock() -> void:
+	_dock = PanelContainer.new()
+	_dock.add_theme_stylebox_override("panel", UIKit.panel_box(14, UIKit.BG, 8))
+	root.add_child(_dock)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 4)
+	_dock.add_child(h)
+	for it in [["call", "phone_in_talk", "接警"], ["units", "groups", "警力"], ["recruit", "person_add", "招募"],
+			["facility", "apartment", "设施"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
+		var b := _dock_button(it[1], it[2])
+		b.pressed.connect(_on_dock.bind(it[0]))
+		h.add_child(b)
+		_dock_btns[it[0]] = b
+		if it[0] == "call":
+			_call_badge = UIKit.label("", 11, Color.WHITE, "bold")
+			var bsb := StyleBoxFlat.new()
+			bsb.bg_color = UIKit.RED
+			bsb.set_corner_radius_all(9)
+			_call_badge.add_theme_stylebox_override("normal", bsb)
+			_call_badge.position = Vector2(44, 3)
+			b.add_child(_call_badge)
+		if it[0] == "call":
+			h.add_child(_vsep())
+	_dock_btns["call"].tooltip_text = "接听 110 来电（空格）"
+	_dock_btns["recruit"].tooltip_text = "招募新编组（R）"
+	_dock_btns["auto"].tooltip_text = "开启时一般警情由系统自动派警"
+
+
+func _dock_button(icon_name: String, text: String) -> Button:
+	var b := UIKit.button("", 12, "ghost")
+	b.custom_minimum_size = Vector2(74, 58)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic := UIKit.icon_label(icon_name, 24, UIKit.TEXT)
+	ic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(ic)
+	var l := UIKit.label(text, 12, UIKit.TEXT_DIM)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(l)
+	b.add_child(v)
+	b.set_meta("icon", ic)
+	b.set_meta("label", l)
+	return b
+
+
+func _on_dock(id: String) -> void:
+	match id:
+		"call":
+			for inc in game.incidents:
+				if inc.state == Incident.S.CALL:
+					game.select(inc)
+					game.cam.focus_on(inc.spot.pos)
+					open_call(inc)
+					return
+			GameState.advisor.emit("现在没有待接的来电。")
+		"units":
+			if _right_mode == "units":
+				_set_right("")
+			else:
+				game.select(null)
+				_show_units()
+		"recruit":
+			toggle_recruit()
+		"facility":
+			var fs: Array = game.city.facilities
+			if fs.is_empty():
+				return
+			var idx := 0
+			if game.selected is Dictionary:
+				idx = (fs.find(game.selected) + 1) % fs.size()
+			game.select(fs[idx])
+			game.cam.focus_on(fs[idx].center, 260)
+		"stats":
+			if _right_mode == "stats":
+				_set_right("")
+			else:
+				game.select(null)
+				_show_stats()
+		"auto":
+			GameState.auto_dispatch = not GameState.auto_dispatch
+			GameState.post("指挥中心", "自动派警已" + ("开启。" if GameState.auto_dispatch else "关闭，所有警情需手动调度。"), "sys")
+	_update_dock()
+
+
+func _update_dock() -> void:
+	if _dock_btns.is_empty():
+		return
+	var active := {"units": _right_mode == "units", "stats": _right_mode == "stats", "recruit": recruit_panel != null and recruit_panel.visible,
+		"auto": GameState.auto_dispatch, "facility": _right_mode == "select" and game.selected is Dictionary}
+	for id in _dock_btns.keys():
+		var b: Button = _dock_btns[id]
+		var on: bool = active.get(id, false)
+		var ic: Label = b.get_meta("icon")
+		var l: Label = b.get_meta("label")
+		ic.add_theme_color_override("font_color", UIKit.ACCENT.lightened(0.2) if on else UIKit.TEXT)
+		l.add_theme_color_override("font_color", UIKit.ACCENT.lightened(0.2) if on else UIKit.TEXT_DIM)
+
+
+# ================================================================== 电台
+func _build_radio() -> void:
+	_ticker = VBoxContainer.new()
+	_ticker.custom_minimum_size = Vector2(520, 0)
+	_ticker.add_theme_constant_override("separation", 4)
+	_ticker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_ticker)
+	_log_panel = TechPanel.new("电台记录", "radio", UIKit.ACCENT, true)
+	_log_panel.visible = false
+	_log_panel.closed.connect(func(): _log_panel.visible = false)
+	root.add_child(_log_panel)
+	_log = RichTextLabel.new()
+	_log.bbcode_enabled = true
+	_log.scroll_following = true
+	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_log.add_theme_font_override("normal_font", UIKit.font("reg"))
+	_log.add_theme_font_override("bold_font", UIKit.font("bold"))
+	_log.add_theme_font_size_override("normal_font_size", 13)
+	_log.add_theme_font_size_override("bold_font_size", 13)
+	_log.add_theme_constant_override("line_separation", 6)
+	_log_panel.body.add_child(_log)
+
+
+func _on_radio(e: Dictionary) -> void:
+	var c: Color = RADIO_COLORS.get(e.kind, UIKit.TEXT)
+	var line := "[color=#6b7682]%s[/color]  [b][color=#%s]%s[/color][/b]  %s" % [e.time, c.to_html(false), e.from, e.text]
+	_log_lines.append(line)
+	if _log_lines.size() > 120:
+		_log_lines.pop_front()
+	_log.text = "\n".join(_log_lines)
+	_recent.append([e, Time.get_ticks_msec() / 1000.0])
+	if _recent.size() > 4:
+		_recent.pop_front()
+	_rebuild_ticker()
+
+
+func _rebuild_ticker() -> void:
+	for c in _ticker.get_children():
+		c.queue_free()
+	for pair in _recent:
+		var e: Dictionary = pair[0]
+		var pc := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.07, 0.08, 0.1, 0.78)
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 10
+		sb.content_margin_right = 12
+		sb.content_margin_top = 5
+		sb.content_margin_bottom = 5
+		pc.add_theme_stylebox_override("panel", sb)
+		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 8)
+		var c: Color = RADIO_COLORS.get(e.kind, UIKit.TEXT)
+		h.add_child(UIKit.icon_label("radio", 14, c))
+		h.add_child(UIKit.label(e.from, 13, c, "bold"))
+		var t := UIKit.label(e.text, 13, UIKit.TEXT)
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.custom_minimum_size = Vector2(380, 0)
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(t)
+		pc.add_child(h)
+		pc.set_meta("t", pair[1])
+		_ticker.add_child(pc)
+
+
+# ================================================================== 值班长对话
 func _build_advisor() -> void:
-	_advisor = Control.new()
-	_advisor.custom_minimum_size = Vector2(620, 74)
-	_advisor.size = Vector2(620, 74)
-	_advisor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_advisor = PanelContainer.new()
+	_advisor.add_theme_stylebox_override("panel", UIKit.panel_box(14, UIKit.BG, 12))
 	_advisor.modulate.a = 0.0
-	_advisor.draw.connect(func():
-		var r := Rect2(Vector2.ZERO, _advisor.size)
-		var pts := UIKit.chamfer_points(r, 12, 0, 12, 0)
-		_advisor.draw_colored_polygon(pts, Color(0.06, 0.05, 0.02, 0.92))
-		var ol := pts.duplicate()
-		ol.append(pts[0])
-		_advisor.draw_polyline(ol, UIKit.with_alpha(UIKit.AMBER, 0.5), 1.0, true)
-		_advisor.draw_rect(Rect2(0, 12, 3, r.size.y - 24), UIKit.AMBER)
-		# 对讲机图标 + 声波
-		var c := Vector2(40, r.size.y * 0.5)
-		_advisor.draw_rect(Rect2(c + Vector2(-9, -14), Vector2(18, 30)), Color(0.15, 0.12, 0.05))
-		_advisor.draw_rect(Rect2(c + Vector2(-9, -14), Vector2(18, 30)), UIKit.AMBER, false, 1.5)
-		_advisor.draw_line(c + Vector2(5, -14), c + Vector2(5, -24), UIKit.AMBER, 2.0)
-		var t := Time.get_ticks_msec() / 1000.0
-		for k in 5:
-			var hh := (0.3 + 0.7 * absf(sin(t * 8.0 + k))) * 7.0 * (1.0 if _advisor_text.visible_ratio < 1.0 else 0.25)
-			_advisor.draw_rect(Rect2(c.x - 6 + k * 3, c.y + 2 - hh * 0.5, 2, hh), UIKit.AMBER))
+	_advisor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_advisor)
-	var name_l := UIKit.label("值班长 · 老周", 13, UIKit.AMBER, "bold")
-	name_l.position = Vector2(72, 8)
-	_advisor.add_child(name_l)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	_advisor.add_child(h)
+	var face := Control.new()
+	face.custom_minimum_size = Vector2(56, 56)
+	face.draw.connect(func():
+		face.draw_circle(Vector2(28, 28), 28, UIKit.NAVY)
+		face.draw_arc(Vector2(28, 28), 27, 0, TAU, 48, UIKit.AMBER, 2.0, true)
+		UIKit.draw_icon(face, "support_agent", Vector2(28, 29), 34, Color.WHITE))
+	h.add_child(face)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	v.add_child(UIKit.label("值班长 · 老周", 13, UIKit.AMBER, "bold"))
 	_advisor_text = UIKit.label("", 15, UIKit.TEXT)
-	_advisor_text.position = Vector2(72, 30)
-	_advisor_text.size = Vector2(530, 40)
 	_advisor_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_advisor.add_child(_advisor_text)
-
-
-func _on_advisor(text: String) -> void:
-	_advisor_queue.append(text)
+	_advisor_text.custom_minimum_size = Vector2(460, 0)
+	v.add_child(_advisor_text)
+	h.add_child(v)
 
 
 func _tick_advisor(delta: float) -> void:
-	_advisor.queue_redraw()
 	if _advisor_t > 0.0:
 		_advisor_t -= delta
 		if _advisor_t <= 0.0:
-			var tw := create_tween()
-			tw.tween_property(_advisor, "modulate:a", 0.0, 0.4)
+			create_tween().tween_property(_advisor, "modulate:a", 0.0, 0.35)
 		return
 	if _advisor_queue.is_empty() or _advisor.modulate.a > 0.01:
 		return
@@ -642,65 +767,97 @@ func _tick_advisor(delta: float) -> void:
 	_advisor_text.text = text
 	_advisor_text.visible_ratio = 0.0
 	_advisor_t = 3.5 + text.length() * 0.09
-	var tw2 := create_tween()
-	tw2.tween_property(_advisor, "modulate:a", 1.0, 0.25)
-	tw2.parallel().tween_property(_advisor_text, "visible_ratio", 1.0, text.length() * 0.03)
+	var tw := create_tween()
+	tw.tween_property(_advisor, "modulate:a", 1.0, 0.25)
+	tw.parallel().tween_property(_advisor_text, "visible_ratio", 1.0, text.length() * 0.025)
 
 
-# ------------------------------------------------------------------ 叠加面板
+# ================================================================== 叠加面板
 func toggle_recruit() -> void:
 	if recruit_panel.visible:
 		recruit_panel.visible = false
 	elif not call_panel.visible:
 		recruit_panel.open()
+	_update_dock()
 
 
 func close_overlays() -> bool:
 	if recruit_panel.visible:
 		recruit_panel.visible = false
+		_update_dock()
 		return true
 	if call_panel.visible:
 		call_panel._on_later()
 		return true
+	if _log_panel.visible:
+		_log_panel.visible = false
+		return true
+	if _right_mode in ["units", "stats"]:
+		_set_right("")
+		return true
 	return false
 
 
-# ------------------------------------------------------------------ 布局与刷新
+func toggle_log() -> void:
+	_log_panel.visible = not _log_panel.visible
+
+
+# ================================================================== 布局与刷新
 func _layout() -> void:
 	var vs := root.get_viewport_rect().size
-	var bottom_h := 270.0
-	var gap := 16.0
-	_inc_panel.position = Vector2(gap, TOP_H + 14)
-	_inc_panel.size = Vector2(LEFT_W, vs.y - TOP_H - 14 - bottom_h - gap * 2)
-	_unit_panel.position = Vector2(vs.x - RIGHT_W - gap, TOP_H + 14)
-	_unit_panel.size = Vector2(RIGHT_W, vs.y - TOP_H - 14 - bottom_h - gap * 2)
-	var bar: Control = root.get_node("TopBar")
-	bar.size = Vector2(vs.x, TOP_H)
-	var row: Control = bar.get_node("Row")
-	row.size = Vector2(vs.x - 80, TOP_H)
-	var radio: Control = root.get_node("Radio")
-	radio.position = Vector2(gap, vs.y - bottom_h - gap)
-	radio.size = Vector2(640, bottom_h)
-	_ctx.position = Vector2(vs.x - 480 - gap, vs.y - bottom_h - gap)
-	_ctx.size = Vector2(480, bottom_h)
-	_advisor.position = Vector2((vs.x - _advisor.size.x) * 0.5, TOP_H + 18)
+	_status.position = Vector2(GAP, TOP)
+	_res.reset_size()
+	_res.position = Vector2(vs.x - _res.size.x - GAP, TOP)
+	var top2 := TOP + 76.0
+	_dock.reset_size()
+	_dock.position = Vector2((vs.x - _dock.size.x) * 0.5, vs.y - _dock.size.y - GAP)
+	# 警情列表高度随内容变化
+	var want := 56.0 + maxf(_cards.size(), 1) * 76.0
+	var max_h := vs.y - top2 - 250.0
+	_inc_panel.position = Vector2(GAP, top2)
+	_inc_panel.size = Vector2(LEFT_W, clampf(want, 110.0, max_h))
+	_right.position = Vector2(vs.x - RIGHT_W - GAP, top2)
+	var rh := 0.0
+	if _right_mode == "units":
+		rh = vs.y - top2 - 110.0
+	else:
+		_right.size.y = 0
+		_right.reset_size()
+		rh = _right.size.y
+	_right.size = Vector2(RIGHT_W, rh)
+	# 电台短讯：左下
+	var tw := 520.0
+	_ticker.size = Vector2(tw, 0)
+	_ticker.reset_size()
+	_ticker.position = Vector2(GAP, vs.y - GAP - _ticker.size.y)
+	_log_panel.position = Vector2(GAP, vs.y * 0.35)
+	_log_panel.size = Vector2(560, vs.y * 0.65 - GAP - 4)
+	_advisor.reset_size()
+	_advisor.position = Vector2((vs.x - _advisor.size.x) * 0.5, _dock.position.y - _advisor.size.y - 12)
 
 
 func _process(delta: float) -> void:
 	_layout()
 	_tick_advisor(delta)
 	_clock.text = GameState.clock_str()
-	_day.text = "DAY %d · %s" % [GameState.day(), "夜班" if GameState.hour() >= 19 or GameState.hour() < 7 else "日班"]
+	var h := GameState.hour()
+	_day.text = "第 %d 天 · %s" % [GameState.day(), "夜间" if h >= 19 or h < 6 else ("清晨" if h < 9 else "白天")]
+	# 电台短讯淡出
+	var now := Time.get_ticks_msec() / 1000.0
+	for c in _ticker.get_children():
+		if c.has_meta("t"):
+			var age: float = now - c.get_meta("t")
+			c.modulate.a = clampf(1.0 - (age - 9.0) / 2.0, 0.0, 1.0)
 	_refresh_t -= delta
 	if _refresh_t > 0.0:
 		return
 	_refresh_t = 0.2
 	_money.text = Data.money_str(GameState.money)
 	_money.add_theme_color_override("font_color", Color.WHITE if GameState.money >= 0 else UIKit.RED)
-	_safety.text = "%.1f" % GameState.safety
-	_safety_bar.set_value(GameState.safety / 100.0, _metric_color(GameState.safety))
-	_opinion.text = "%.1f" % GameState.opinion
-	_opinion_bar.set_value(GameState.opinion / 100.0, _metric_color(GameState.opinion))
+	_safety.text = "%.0f" % GameState.safety
+	_safety_bar.set_value(GameState.safety / 100.0, _metric_color(GameState.safety, UIKit.ACCENT))
+	_opinion.text = "%.0f" % GameState.opinion
+	_opinion_bar.set_value(GameState.opinion / 100.0, _metric_color(GameState.opinion, UIKit.AMBER))
 	_staff.text = "%d / %d" % [GameState.staff_used, GameState.staff_cap]
 	var active := 0
 	var calls := 0
@@ -709,19 +866,19 @@ func _process(delta: float) -> void:
 			active += 1
 			if inc.state == Incident.S.CALL:
 				calls += 1
-	_inc_panel.set_count(("来电 %d · " % calls if calls > 0 else "") + "%d" % active, UIKit.AMBER if calls > 0 else UIKit.CYAN)
-	var avail := 0
-	for u in game.units:
-		if u.incident == null:
-			avail += 1
-	_unit_panel.set_count("%d / %d" % [avail, game.units.size()])
+	_inc_panel.set_count("%d" % active if active > 0 else "", UIKit.TEXT_DIM)
+	_inc_empty.visible = _cards.is_empty()
+	_call_badge.text = " %d " % calls if calls > 0 else ""
+	var cb: Button = _dock_btns["call"]
+	var ic: Label = cb.get_meta("icon")
+	ic.add_theme_color_override("font_color", UIKit.RED if calls > 0 and fmod(now, 1.0) < 0.6 else UIKit.TEXT)
 	_sort_cards()
-	_refresh_ctx()
+	_refresh_right()
 
 
-func _metric_color(v: float) -> Color:
-	if v >= 60.0:
-		return UIKit.CYAN
+func _metric_color(v: float, base: Color) -> Color:
+	if v >= 55.0:
+		return base
 	if v >= 40.0:
 		return UIKit.AMBER
 	return UIKit.RED

@@ -638,6 +638,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				GameState.set_speed(4.0)
 			KEY_R:
 				hud.toggle_recruit()
+			KEY_L:
+				hud.toggle_log()
 			KEY_ESCAPE:
 				if hud.close_overlays():
 					return

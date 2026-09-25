@@ -1,6 +1,6 @@
 class_name UnitRow
 extends Control
-## 警力列表行（自绘）
+## 警力列表行（自绘）：车型图标、呼号、任务、状态标签、疲劳条。
 
 signal pressed(u: PoliceUnit)
 
@@ -12,7 +12,7 @@ var _hover := false
 func _init(p_u: PoliceUnit, p_game: Game) -> void:
 	u = p_u
 	game = p_game
-	custom_minimum_size = Vector2(0, 36)
+	custom_minimum_size = Vector2(0, 46)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	mouse_entered.connect(func(): _hover = true)
@@ -31,30 +31,27 @@ func _process(_d: float) -> void:
 
 func _draw() -> void:
 	var sel: bool = UIKit.same(game.selected, u)
-	var bg := Color(0.04, 0.08, 0.13, 0.75)
-	if _hover or sel:
-		bg = Color(0.07, 0.14, 0.22, 0.9)
-	draw_rect(Rect2(Vector2.ZERO, size), bg)
-	if sel:
-		draw_rect(Rect2(0, 0, 3, size.y), UIKit.CYAN)
+	var bg := UIKit.BG2 if not (_hover or sel) else UIKit.BG3
+	UIKit.draw_round_rect(self, Rect2(Vector2.ZERO, size), bg, 8, UIKit.ACCENT if sel else Color(0, 0, 0, 0), 2 if sel else 0)
 	var col: Color = u.state_color()
-	var t := Time.get_ticks_msec() / 1000.0
-	var led := col
-	if u.state in [PoliceUnit.State.ENROUTE, PoliceUnit.State.ONSCENE]:
-		led = UIKit.RED if fmod(t * 3.2, 1.0) < 0.5 else UIKit.BLUE
-	draw_circle(Vector2(14, size.y * 0.5), 4.0, led)
-	var fn := UIKit.font("num_bold")
+	var c := Vector2(24, size.y * 0.5)
+	draw_circle(c, 15, UIKit.with_alpha(col, 0.18))
+	UIKit.draw_icon(self, u.info.gi, c, 18, col)
 	var fb := UIKit.font("bold")
 	var fr := UIKit.font("reg")
-	draw_string(fn, Vector2(26, 23), u.callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, UIKit.TEXT)
+	draw_string(fb, Vector2(48, 21), u.callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIKit.TEXT)
+	var task := u.info.short as String
+	if u.incident != null:
+		task = u.incident.title()
+	elif u.resting:
+		task = "轮休中"
+	draw_string(fr, Vector2(48, 38), task, HORIZONTAL_ALIGNMENT_LEFT, size.x - 48 - 90, 12, UIKit.TEXT_DIM)
 	var st: String = u.state_name()
-	if u.incident != null and u.state in [PoliceUnit.State.ENROUTE, PoliceUnit.State.ONSCENE]:
-		st += " · " + u.incident.title()
-	draw_string(fr, Vector2(104, 23), st, HORIZONTAL_ALIGNMENT_LEFT, size.x - 104 - 58, 13, col)
+	var fw := fb.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 14.0
+	UIKit.draw_chip(self, st, Vector2(size.x - fw - 10, 7), col, 11)
 	# 疲劳
-	var fw := 40.0
-	var fx := size.x - fw - 10
-	draw_rect(Rect2(fx, 16, fw, 4), Color(1, 1, 1, 0.08))
+	var bw := 44.0
+	var br := Rect2(size.x - bw - 10, 33, bw, 3)
+	UIKit.draw_round_rect(self, br, Color(1, 1, 1, 0.08), 2)
 	var fc := UIKit.GREEN if u.fatigue < 50 else (UIKit.AMBER if u.fatigue < 80 else UIKit.RED)
-	draw_rect(Rect2(fx, 16, fw * (1.0 - u.fatigue / 100.0), 4), fc)
-	var _unused := fb
+	UIKit.draw_round_rect(self, Rect2(br.position, Vector2(bw * (1.0 - u.fatigue / 100.0), 3)), fc, 2)

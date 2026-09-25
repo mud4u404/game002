@@ -1,11 +1,10 @@
 class_name MarkerLayer
 extends Control
-## 地图标注层：警情、单位、设施图标，选中高亮，行进路线，屏幕外指示。
-
-const FAC_GLYPH := {"station": "所", "patrol_hq": "巡", "traffic_hq": "交", "swat_hq": "特"}
+## 地图标注层：街道名、设施、警情图钉、警力图标、出警路线、屏幕外指示。
 
 var game: Game
 var hover = null
+var _labels: Array = []
 
 
 func _ready() -> void:
@@ -14,7 +13,8 @@ func _ready() -> void:
 
 
 func _process(_d: float) -> void:
-	hover = game.pick(get_viewport().get_mouse_position()) if game else null
+	if game and game.city and game._started:
+		hover = game.pick(get_viewport().get_mouse_position())
 	queue_redraw()
 
 
@@ -23,138 +23,165 @@ func _p(w: Vector3) -> Vector2:
 
 
 func _draw() -> void:
-	if game == null:
+	if game == null or not game._started:
 		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var zoom: float = game.cam.dist
-	var close := zoom < 520.0
-	var f_bold := UIKit.font("bold")
-	var f_num := UIKit.font("num_bold")
-	var f_reg := UIKit.font("reg")
 	var vr := get_viewport_rect()
-
-	# 街道名
 	_road_labels(zoom, vr)
+
+	# 出警路线
+	for u in game.units:
+		var show_route: bool = u.state == PoliceUnit.State.ENROUTE or UIKit.same(game.selected, u) and u.state in [PoliceUnit.State.PATROL, PoliceUnit.State.RETURN, PoliceUnit.State.MOVE]
+		if not show_route:
+			continue
+		var pts: PackedVector3Array = u.remaining_points()
+		var sp := PackedVector2Array()
+		for w in pts:
+			sp.append(_p(w))
+		var c: Color = Data.level_color(u.incident.level()) if u.incident != null else UIKit.ACCENT
+		_route(sp, c, t)
 
 	# 设施
 	for f in game.city.facilities:
 		var p := _p(f.center)
 		if not vr.grow(40).has_point(p):
 			continue
-		var r := Rect2(p - Vector2(15, 15), Vector2(30, 30))
-		var pts := UIKit.chamfer_points(r, 6, 0, 6, 0)
-		draw_colored_polygon(pts, Color(0.03, 0.1, 0.25, 0.92))
-		var ol := pts.duplicate()
-		ol.append(pts[0])
-		draw_polyline(ol, Color(0.35, 0.6, 1.0), 1.5, true)
-		_text_c(f_bold, FAC_GLYPH.get(f.type, "警"), p + Vector2(0, 6), 16, Color(0.85, 0.92, 1.0))
-		if close or UIKit.same(game.selected, f) or UIKit.same(hover, f):
-			_text_c(f_bold, f.name, p + Vector2(0, 32), 13, Color(0.7, 0.82, 1.0), true)
-		if UIKit.same(game.selected, f):
-			UIKit.draw_brackets(self, r.grow(6), UIKit.CYAN, 7, 2)
-
-	# 出警连线与路线
-	for u in game.units:
-		if u.state == PoliceUnit.State.ENROUTE and u.incident != null:
-			var pts: PackedVector3Array = u.remaining_points()
-			var sp := PackedVector2Array()
-			for w in pts:
-				sp.append(_p(w))
-			var c := Data.level_color(u.incident.level())
-			_dashed(sp, UIKit.with_alpha(c, 0.55), 2.0, t)
-		elif UIKit.same(game.selected, u) and u.state in [PoliceUnit.State.PATROL, PoliceUnit.State.RETURN, PoliceUnit.State.MOVE]:
-			var pts: PackedVector3Array = u.remaining_points()
-			var sp := PackedVector2Array()
-			for w in pts:
-				sp.append(_p(w))
-			_dashed(sp, UIKit.with_alpha(UIKit.CYAN, 0.45), 1.5, t)
+		var sel: bool = UIKit.same(game.selected, f)
+		var r := Rect2(p - Vector2(16, 16), Vector2(32, 32))
+		UIKit.draw_round_rect(self, r.grow(2), Color(1, 1, 1, 0.9) if sel else Color(0, 0, 0, 0.35), 9)
+		UIKit.draw_round_rect(self, r, UIKit.NAVY, 8)
+		UIKit.draw_icon(self, Data.FACILITY_TYPES[f.type].gi, p, 20, Color.WHITE)
+		if zoom < 700.0 or sel or UIKit.same(hover, f):
+			_pill(f.name, p + Vector2(0, 30), UIKit.TEXT, 12)
 
 	# 警情
 	for inc in game.incidents:
-		_draw_incident(inc, t, close, vr, f_bold, f_num, f_reg)
+		_draw_incident(inc, t, zoom, vr)
 
-	# 单位
+	# 警力
 	for u in game.units:
-		var p := _p(u.global_position)
-		if not vr.grow(20).has_point(p):
-			continue
-		var hd := _p(u.global_position + u.heading() * 10.0) - p
-		var ang := hd.angle()
-		var col: Color = u.state_color()
-		var s := 8.0 if u.kind != "swat" else 9.5
-		var tri := PackedVector2Array([
-			p + Vector2(s * 1.4, 0).rotated(ang),
-			p + Vector2(-s, s * 0.85).rotated(ang),
-			p + Vector2(-s * 0.45, 0).rotated(ang),
-			p + Vector2(-s, -s * 0.85).rotated(ang),
-		])
-		var outline := tri.duplicate()
-		outline.append(tri[0])
-		draw_colored_polygon(tri, Color(0.02, 0.04, 0.07, 0.9))
-		draw_polyline(outline, col, 2.0, true)
-		if u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.ONSCENE:
-			var on := fmod(t * 3.2, 1.0) < 0.5
-			draw_circle(p, 2.6, UIKit.RED if on else UIKit.BLUE)
-		if UIKit.same(game.selected, u) or UIKit.same(hover, u) or (close and zoom < 300.0):
-			_text(f_num, u.callsign, p + Vector2(12, -8), 13, col, true)
-		if UIKit.same(game.selected, u):
-			UIKit.draw_brackets(self, Rect2(p - Vector2(15, 15), Vector2(30, 30)), UIKit.CYAN, 7, 2)
-		elif UIKit.same(hover, u):
-			draw_arc(p, 14, 0, TAU, 24, UIKit.with_alpha(UIKit.CYAN, 0.6), 1.5, true)
+		_draw_unit(u, t, zoom, vr)
 
 
-func _draw_incident(inc: Incident, t: float, close: bool, vr: Rect2, f_bold: Font, f_num: Font, f_reg: Font) -> void:
+# ------------------------------------------------------------------ 警情图钉
+func _draw_incident(inc: Incident, t: float, zoom: float, vr: Rect2) -> void:
 	var p := _p(inc.spot.pos)
 	var col := Data.level_color(inc.level())
-	var done := not inc.is_active()
-	if done:
-		col = UIKit.GREEN if inc.state == Incident.S.DONE else Color(0.6, 0.6, 0.6)
-	var inside := vr.grow(-24).has_point(p)
-	if not inside:
-		if done:
-			return
-		# 屏幕外指示箭头
-		var c := vr.get_center()
-		var dir := (p - c).normalized()
-		var edge := _clip_to_rect(c, p, vr.grow(-40))
-		var tri := PackedVector2Array([edge + dir * 12, edge + dir.rotated(2.4) * 9, edge + dir.rotated(-2.4) * 9])
-		draw_colored_polygon(tri, col)
-		_text_c(f_bold, inc.data().icon, edge - dir * 14 + Vector2(0, 5), 13, col)
+	var active := inc.is_active()
+	if not active:
+		col = UIKit.GREEN if inc.state == Incident.S.DONE else UIKit.TEXT_MUTED
+	var calling := inc.state == Incident.S.CALL
+	if not vr.grow(-20).has_point(p):
+		if active:
+			_offscreen(p, col, inc.data().gi if not calling else "phone_in_talk", vr)
 		return
-	var s := 13.0 + (2.0 if inc.level() >= 3 else 0.0)
-	var pulse := 1.0 + 0.12 * sin(t * 6.0) if inc.state in [Incident.S.CALL, Incident.S.WAITING] else 1.0
-	s *= pulse
-	var dia := PackedVector2Array([p + Vector2(0, -s), p + Vector2(s, 0), p + Vector2(0, s), p + Vector2(-s, 0)])
-	draw_colored_polygon(dia, Color(0.03, 0.03, 0.05, 0.92))
-	var ol := dia.duplicate()
-	ol.append(dia[0])
-	draw_polyline(ol, col, 2.0, true)
-	if inc.state == Incident.S.CALL:
-		var blink := fmod(t * 2.0, 1.0) < 0.6
-		_text_c(f_num, "110", p + Vector2(0, 4.5), 10, UIKit.AMBER if blink else col)
-	else:
-		_text_c(f_bold, inc.data().icon, p + Vector2(0, 5.5), 14, col)
-	# 外环：升级倒计时 / 处置进度
-	var r := s + 6.0
+	var sel: bool = UIKit.same(game.selected, inc)
+	var hv: bool = UIKit.same(hover, inc)
+	var R := 15.0 + (2.0 if inc.level() >= 3 else 0.0) + (2.0 if sel or hv else 0.0)
+	# 等待状态的扩散波纹
+	if inc.state in [Incident.S.CALL, Incident.S.WAITING]:
+		for k in 2:
+			var ph := fmod(t * 0.9 + k * 0.5, 1.0)
+			draw_arc(p, R + 4 + ph * 22.0, 0, TAU, 48, UIKit.with_alpha(col, 0.55 * (1.0 - ph)), 2.0, true)
+	draw_circle(p + Vector2(0, 2), R + 2, Color(0, 0, 0, 0.35))
+	draw_circle(p, R + 2, Color.WHITE if sel else Color(1, 1, 1, 0.92))
+	draw_circle(p, R, col)
+	UIKit.draw_icon(self, "phone_in_talk" if calling else inc.data().gi, p, int(R * 1.25), Color.WHITE)
+	# 外环：时限 / 进度
+	var rr := R + 6.0
 	if inc.state == Incident.S.ONSCENE:
-		draw_arc(p, r, -PI / 2, -PI / 2 + TAU * clampf(inc.progress, 0, 1), 32, UIKit.GREEN, 3.0, true)
-		if inc.stalled:
-			_text_c(f_bold, "武力不足", p + Vector2(0, -r - 8), 12, UIKit.RED, true)
+		draw_arc(p, rr, 0, TAU, 48, Color(0, 0, 0, 0.35), 4.0, true)
+		draw_arc(p, rr, -PI / 2, -PI / 2 + TAU * clampf(inc.progress, 0, 1), 48, UIKit.GREEN, 4.0, true)
 	elif inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED]:
-		var total: float = inc.true_data().deadline
-		var frac := clampf(inc.deadline / total, 0.0, 1.0)
-		var rc := col if frac > 0.3 else (UIKit.RED if fmod(t * 4.0, 1.0) < 0.5 else col)
-		draw_arc(p, r, -PI / 2, -PI / 2 + TAU * frac, 32, UIKit.with_alpha(rc, 0.9), 2.5, true)
-	if UIKit.same(game.selected, inc):
-		UIKit.draw_brackets(self, Rect2(p - Vector2(r + 5, r + 5), Vector2(r + 5, r + 5) * 2), UIKit.CYAN, 8, 2)
-	if close or UIKit.same(game.selected, inc) or UIKit.same(hover, inc) or inc.level() >= 3:
-		var label := inc.title() if inc.state != Incident.S.CALL else "来电待研判"
-		if done:
-			label = "已结案" if inc.state == Incident.S.DONE else "处置失败"
-		_text_c(f_bold, label, p + Vector2(0, r + 18), 13, col, true)
+		var frac := clampf(inc.deadline / float(inc.true_data().deadline), 0.0, 1.0)
+		var rc := col if frac > 0.3 else (UIKit.RED if fmod(t * 3.0, 1.0) < 0.5 else Color.WHITE)
+		draw_arc(p, rr, 0, TAU, 48, Color(0, 0, 0, 0.35), 4.0, true)
+		draw_arc(p, rr, -PI / 2, -PI / 2 + TAU * frac, 48, rc, 4.0, true)
+	if zoom < 650.0 or sel or hv or inc.level() >= 3 or calling:
+		var text := "110 来电" if calling else inc.title()
+		if not active:
+			text = "已结案" if inc.state == Incident.S.DONE else "处置失败"
+		elif inc.stalled:
+			text += " · 武力不足"
+		_pill(text, p + Vector2(0, R + 22), UIKit.RED if inc.stalled else Color.WHITE, 12)
 
 
-var _labels: Array = []
+# ------------------------------------------------------------------ 警力图标
+func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
+	var p := _p(u.global_position)
+	if not vr.grow(20).has_point(p):
+		return
+	var sel: bool = UIKit.same(game.selected, u)
+	var hv: bool = UIKit.same(hover, u)
+	var col: Color = u.state_color()
+	var R := 9.5 if not (sel or hv) else 11.0
+	var hd := _p(u.global_position + u.heading() * 10.0) - p
+	var ang := hd.angle()
+	var emergency := u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.ONSCENE
+	# 朝向小三角
+	var tip := p + Vector2(R + 6, 0).rotated(ang)
+	var tri := PackedVector2Array([tip, p + Vector2(R, 4.5).rotated(ang), p + Vector2(R, -4.5).rotated(ang)])
+	draw_colored_polygon(tri, Color.WHITE)
+	draw_circle(p + Vector2(0, 1.5), R + 1.5, Color(0, 0, 0, 0.35))
+	var ring := Color.WHITE
+	if emergency:
+		ring = Color("ff3b3b") if fmod(t * 3.2, 1.0) < 0.5 else Color("3b7bff")
+	draw_circle(p, R + 1.5, ring)
+	draw_circle(p, R, col.darkened(0.35) if u.state == PoliceUnit.State.IDLE else col)
+	UIKit.draw_icon(self, u.info.gi, p, int(R * 1.35), Color.WHITE)
+	if sel or hv or zoom < 320.0:
+		_pill(u.callsign, p + Vector2(0, -R - 13), Color.WHITE, 11)
+
+
+# ------------------------------------------------------------------ 工具
+func _pill(text: String, center: Vector2, col: Color, size: int) -> void:
+	var f := UIKit.font("bold")
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 14.0
+	var h := size + 9.0
+	var r := Rect2(center - Vector2(w, h) * 0.5, Vector2(w, h))
+	UIKit.draw_round_rect(self, r, Color(0.07, 0.08, 0.1, 0.82), h * 0.5)
+	draw_string(f, Vector2(r.position.x + 7, center.y + size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+
+func _offscreen(p: Vector2, col: Color, icon_name: String, vr: Rect2) -> void:
+	var c := vr.get_center()
+	var dir := (p - c).normalized()
+	var edge := _clip_to_rect(c, p, vr.grow(-46))
+	var tri := PackedVector2Array([edge + dir * 22, edge + dir * 12 + dir.orthogonal() * 7, edge + dir * 12 - dir.orthogonal() * 7])
+	draw_colored_polygon(tri, col)
+	draw_circle(edge, 13, Color.WHITE)
+	draw_circle(edge, 11.5, col)
+	UIKit.draw_icon(self, icon_name, edge, 15, Color.WHITE)
+
+
+func _route(pts: PackedVector2Array, col: Color, t: float) -> void:
+	if pts.size() < 2:
+		return
+	var ok := PackedVector2Array()
+	for q in pts:
+		if is_finite(q.x) and is_finite(q.y) and absf(q.x) < 20000.0 and absf(q.y) < 20000.0:
+			ok.append(q)
+	if ok.size() < 2:
+		return
+	draw_polyline(ok, Color(0, 0, 0, 0.35), 6.0, true)
+	draw_polyline(ok, UIKit.with_alpha(col, 0.85), 3.0, true)
+	# 流动的方向点
+	var total := 0.0
+	for k in ok.size() - 1:
+		total += ok[k].distance_to(ok[k + 1])
+	var spacing := 26.0
+	var off := fmod(t * 40.0, spacing)
+	var acc := 0.0
+	var next := off
+	for k in ok.size() - 1:
+		var a := ok[k]
+		var b := ok[k + 1]
+		var L := a.distance_to(b)
+		while next <= acc + L and next < total:
+			draw_circle(a.lerp(b, (next - acc) / maxf(L, 0.001)), 2.2, Color.WHITE)
+			next += spacing
+		acc += L
 
 
 func _road_labels(zoom: float, vr: Rect2) -> void:
@@ -163,8 +190,8 @@ func _road_labels(zoom: float, vr: Rect2) -> void:
 	if _labels.is_empty():
 		_labels = game.city.road_labels()
 	var night: float = game.env.night
-	var col := Color(0.16, 0.18, 0.21).lerp(Color(0.86, 0.9, 0.95), night)
-	var halo := Color(0.96, 0.95, 0.92, 0.85).lerp(Color(0.02, 0.03, 0.05, 0.85), night)
+	var col := Color(0.2, 0.22, 0.25).lerp(Color(0.8, 0.84, 0.9), night)
+	var halo := Color(0.97, 0.96, 0.93, 0.8).lerp(Color(0.02, 0.03, 0.05, 0.8), night)
 	var f := UIKit.font("bold")
 	for L in _labels:
 		if L.cls == "D" and zoom > 380.0:
@@ -177,9 +204,8 @@ func _road_labels(zoom: float, vr: Rect2) -> void:
 		var ang := (b - a).angle()
 		if ang > PI * 0.5 or ang < -PI * 0.5:
 			ang += PI
-		var size := 14 if L.cls in ["A", "B"] else 12
+		var size := 13 if L.cls in ["A", "B"] else 11
 		var text: String = L.name
-		# 竖向道路逐字竖排更易读
 		var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 		if w > a.distance_to(b) * 0.8:
 			continue
@@ -198,40 +224,3 @@ func _clip_to_rect(c: Vector2, p: Vector2, r: Rect2) -> Vector2:
 	if absf(d.y) > 0.001:
 		ty = ((r.end.y if d.y > 0 else r.position.y) - c.y) / d.y
 	return c + d * minf(tx, ty)
-
-
-func _dashed(pts: PackedVector2Array, col: Color, w: float, t: float) -> void:
-	var dash := 8.0
-	var gap := 6.0
-	var phase := fmod(t * 30.0, dash + gap)
-	var acc := -phase
-	for k in range(pts.size() - 1):
-		var a := pts[k]
-		var b := pts[k + 1]
-		var L := a.distance_to(b)
-		if L < 0.01 or L > 20000.0 or is_nan(L):
-			continue
-		var dir := (b - a) / L
-		var s := 0.0
-		var guard := 0
-		while s < L and guard < 4000:
-			guard += 1
-			var cyc := fposmod(acc + s, dash + gap)
-			if cyc < dash:
-				var e := minf(s + (dash - cyc), L)
-				draw_line(a + dir * s, a + dir * e, col, w, true)
-				s = e
-			else:
-				s = minf(s + (dash + gap - cyc), L)
-		acc += L
-
-
-func _text(f: Font, s: String, pos: Vector2, size: int, col: Color, shadow := false) -> void:
-	if shadow:
-		draw_string_outline(f, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, Color(0, 0, 0, 0.85))
-	draw_string(f, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
-
-
-func _text_c(f: Font, s: String, pos: Vector2, size: int, col: Color, shadow := false) -> void:
-	var w := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	_text(f, s, pos - Vector2(w * 0.5, 0), size, col, shadow)

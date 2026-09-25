@@ -4,8 +4,8 @@ extends Node3D
 
 enum State { IDLE, PATROL, ENROUTE, ONSCENE, RETURN, MOVE }
 const STATE_NAMES := ["待命", "巡逻", "出警", "处置", "返回", "机动"]
-const STATE_COLORS := [Color(0.45, 0.62, 0.75), Color(0.21, 0.88, 1.0), Color(1.0, 0.72, 0.25),
-	Color(1.0, 0.4, 0.3), Color(0.6, 0.7, 0.8), Color(0.7, 0.85, 1.0)]
+const STATE_COLORS := [Color("8a96a3"), Color("4ea1ff"), Color("ff9f1a"),
+	Color("ff4d4f"), Color("7f93aa"), Color("8fb8ff")]
 
 var uid := 0
 var kind := ""

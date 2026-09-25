@@ -7,7 +7,7 @@ const MIN_PER_SEC := 0.5  # 1× 倍速下，每现实秒推进的游戏分钟
 # ---------------------------------------------------------------- 单位
 const UNIT_TYPES := {
 	"community": {
-		"name": "社区警务车", "short": "社区", "callsign": "社区",
+		"gi": "local_police", "name": "社区警务车", "short": "社区", "callsign": "社区",
 		"facility": "station", "force": 1, "speed": 20.0,
 		"cost": 60000, "upkeep": 1800, "staff": 1, "crew": "民警 1 · 辅警 1",
 		"patrol": true, "patrol_radius": 190.0,
@@ -15,7 +15,7 @@ const UNIT_TYPES := {
 		"desc": "派出所基础警力，擅长纠纷调解与走失寻找。",
 	},
 	"patrol": {
-		"name": "巡逻警车", "short": "巡逻", "callsign": "巡逻",
+		"gi": "directions_car", "name": "巡逻警车", "short": "巡逻", "callsign": "巡逻",
 		"facility": "patrol_hq", "force": 2, "speed": 25.0,
 		"cost": 90000, "upkeep": 2600, "staff": 2, "crew": "民警 2",
 		"patrol": true, "patrol_radius": 420.0,
@@ -23,7 +23,7 @@ const UNIT_TYPES := {
 		"desc": "巡特警快反主力，街面巡逻可压降发案。",
 	},
 	"traffic": {
-		"name": "交警铁骑", "short": "铁骑", "callsign": "铁骑",
+		"gi": "two_wheeler", "name": "交警铁骑", "short": "铁骑", "callsign": "铁骑",
 		"facility": "traffic_hq", "force": 1, "speed": 31.0,
 		"cost": 50000, "upkeep": 1400, "staff": 1, "crew": "民警 1",
 		"patrol": true, "patrol_radius": 500.0, "moto": true,
@@ -31,7 +31,7 @@ const UNIT_TYPES := {
 		"desc": "机动灵活，处置交通事故与拥堵效率极高。",
 	},
 	"swat": {
-		"name": "特警突击车", "short": "特警", "callsign": "特警",
+		"gi": "airport_shuttle", "name": "特警突击车", "short": "特警", "callsign": "特警",
 		"facility": "swat_hq", "force": 4, "speed": 24.0,
 		"cost": 260000, "upkeep": 6800, "staff": 4, "crew": "特警 4",
 		"patrol": false, "patrol_radius": 0.0, "big": true,
@@ -41,10 +41,10 @@ const UNIT_TYPES := {
 }
 
 const FACILITY_TYPES := {
-	"station": {"name": "派出所", "units": ["community"]},
-	"patrol_hq": {"name": "巡特警大队", "units": ["patrol"]},
-	"traffic_hq": {"name": "交警中队", "units": ["traffic"]},
-	"swat_hq": {"name": "特警支队", "units": ["swat"]},
+	"station": {"gi": "local_police", "name": "派出所", "units": ["community"]},
+	"patrol_hq": {"gi": "directions_car", "name": "巡特警大队", "units": ["patrol"]},
+	"traffic_hq": {"gi": "traffic", "name": "交警中队", "units": ["traffic"]},
+	"swat_hq": {"gi": "security", "name": "特警支队", "units": ["swat"]},
 }
 
 # ---------------------------------------------------------------- 警情
@@ -53,33 +53,33 @@ const FACILITY_TYPES := {
 ## need: 需求单位数量；dur: 基础处置时长（游戏分钟）
 ## esc: 超时未到场时升级为的警情；deadline: 升级 / 失败时限（游戏分钟）
 const INCIDENTS := {
-	"dispute": {"name": "邻里纠纷", "level": 1, "force": 0, "need": 1, "dur": 14.0, "deadline": 40.0, "esc": "fight",
+	"dispute": {"name": "邻里纠纷", "gi": "forum", "level": 1, "force": 0, "need": 1, "dur": 14.0, "deadline": 40.0, "esc": "fight",
 		"match": {"community": 1.6, "patrol": 1.0, "traffic": 0.6, "swat": 0.7}, "icon": "纠"},
-	"missing": {"name": "走失老人", "level": 1, "force": 0, "need": 1, "dur": 24.0, "deadline": 60.0, "esc": "",
+	"missing": {"name": "走失老人", "gi": "person_search", "level": 1, "force": 0, "need": 1, "dur": 24.0, "deadline": 60.0, "esc": "",
 		"match": {"community": 1.6, "patrol": 1.1, "traffic": 0.9, "swat": 0.8}, "icon": "寻"},
-	"theft": {"name": "盗窃（已离开）", "level": 1, "force": 0, "need": 1, "dur": 16.0, "deadline": 50.0, "esc": "",
+	"theft": {"name": "盗窃（已离开）", "gi": "shopping_bag", "level": 1, "force": 0, "need": 1, "dur": 16.0, "deadline": 50.0, "esc": "",
 		"match": {"community": 1.3, "patrol": 1.2, "traffic": 0.6, "swat": 0.6}, "icon": "盗"},
-	"traffic_minor": {"name": "交通事故（轻微）", "level": 1, "force": 0, "need": 1, "dur": 14.0, "deadline": 30.0, "esc": "jam",
+	"traffic_minor": {"name": "交通事故（轻微）", "gi": "car_crash", "level": 1, "force": 0, "need": 1, "dur": 14.0, "deadline": 30.0, "esc": "jam",
 		"match": {"community": 0.7, "patrol": 0.8, "traffic": 1.8, "swat": 0.5}, "icon": "事"},
-	"jam": {"name": "交通拥堵", "level": 1, "force": 0, "need": 1, "dur": 16.0, "deadline": 40.0, "esc": "",
+	"jam": {"name": "交通拥堵", "gi": "traffic", "level": 1, "force": 0, "need": 1, "dur": 16.0, "deadline": 40.0, "esc": "",
 		"match": {"community": 0.6, "patrol": 0.8, "traffic": 1.8, "swat": 0.4}, "icon": "堵"},
-	"drunk": {"name": "醉酒滋事", "level": 2, "force": 1, "need": 1, "dur": 12.0, "deadline": 24.0, "esc": "fight",
+	"drunk": {"name": "醉酒滋事", "gi": "local_bar", "level": 2, "force": 1, "need": 1, "dur": 12.0, "deadline": 24.0, "esc": "fight",
 		"match": {"community": 1.1, "patrol": 1.4, "traffic": 0.8, "swat": 1.0}, "icon": "醉"},
-	"fight": {"name": "打架斗殴", "level": 2, "force": 2, "need": 2, "dur": 16.0, "deadline": 20.0, "esc": "armed",
+	"fight": {"name": "打架斗殴", "gi": "sports_kabaddi", "level": 2, "force": 2, "need": 2, "dur": 16.0, "deadline": 20.0, "esc": "armed",
 		"match": {"community": 0.9, "patrol": 1.5, "traffic": 0.7, "swat": 1.3}, "icon": "斗"},
-	"burglary": {"name": "入室盗窃（在场）", "level": 2, "force": 2, "need": 1, "dur": 16.0, "deadline": 18.0, "esc": "robbery",
+	"burglary": {"name": "入室盗窃（在场）", "gi": "door_open", "level": 2, "force": 2, "need": 1, "dur": 16.0, "deadline": 18.0, "esc": "robbery",
 		"match": {"community": 1.0, "patrol": 1.5, "traffic": 0.7, "swat": 1.2}, "icon": "窃"},
-	"dui": {"name": "醉驾", "level": 2, "force": 1, "need": 1, "dur": 10.0, "deadline": 16.0, "esc": "traffic_major",
+	"dui": {"name": "醉驾", "gi": "no_drinks", "level": 2, "force": 1, "need": 1, "dur": 10.0, "deadline": 16.0, "esc": "traffic_major",
 		"match": {"community": 0.6, "patrol": 1.1, "traffic": 1.8, "swat": 0.5}, "icon": "驾"},
-	"robbery": {"name": "抢劫", "level": 3, "force": 2, "need": 2, "dur": 20.0, "deadline": 16.0, "esc": "armed",
+	"robbery": {"name": "抢劫", "gi": "back_hand", "level": 3, "force": 2, "need": 2, "dur": 20.0, "deadline": 16.0, "esc": "armed",
 		"match": {"community": 0.8, "patrol": 1.5, "traffic": 0.9, "swat": 1.4}, "icon": "抢"},
-	"traffic_major": {"name": "交通事故（伤亡）", "level": 3, "force": 0, "need": 2, "dur": 28.0, "deadline": 16.0, "esc": "",
+	"traffic_major": {"name": "交通事故（伤亡）", "gi": "car_crash", "level": 3, "force": 0, "need": 2, "dur": 28.0, "deadline": 16.0, "esc": "",
 		"match": {"community": 0.7, "patrol": 0.9, "traffic": 1.8, "swat": 0.6}, "icon": "伤"},
-	"armed": {"name": "持械伤人", "level": 3, "force": 3, "need": 2, "dur": 18.0, "deadline": 14.0, "esc": "hostage",
+	"armed": {"name": "持械伤人", "gi": "swords", "level": 3, "force": 3, "need": 2, "dur": 18.0, "deadline": 14.0, "esc": "hostage",
 		"match": {"community": 0.7, "patrol": 1.2, "traffic": 0.6, "swat": 1.8}, "icon": "械"},
-	"hostage": {"name": "劫持人质", "level": 4, "force": 4, "need": 2, "dur": 40.0, "deadline": 30.0, "esc": "",
+	"hostage": {"name": "劫持人质", "gi": "crisis_alert", "level": 4, "force": 4, "need": 2, "dur": 40.0, "deadline": 30.0, "esc": "",
 		"match": {"community": 0.5, "patrol": 0.9, "traffic": 0.4, "swat": 2.0}, "icon": "质"},
-	"prank": {"name": "恶作剧报警", "level": 1, "force": 0, "need": 1, "dur": 4.0, "deadline": 30.0, "esc": "",
+	"prank": {"name": "恶作剧报警", "gi": "theater_comedy", "level": 1, "force": 0, "need": 1, "dur": 4.0, "deadline": 30.0, "esc": "",
 		"match": {"community": 1.0, "patrol": 1.0, "traffic": 1.0, "swat": 1.0}, "icon": "?"},
 }
 
@@ -235,10 +235,10 @@ static func money_str(v: float) -> String:
 
 static func level_color(level: int) -> Color:
 	match level:
-		1: return Color(0.21, 0.88, 1.0)
-		2: return Color(1.0, 0.8, 0.28)
-		3: return Color(1.0, 0.52, 0.18)
-		_: return Color(1.0, 0.23, 0.31)
+		1: return Color("4ea1ff")
+		2: return Color("ffc53d")
+		3: return Color("ff8a24")
+		_: return Color("ff4d4f")
 
 static func level_name(level: int) -> String:
 	return ["", "一般", "较大", "重大", "特别重大"][clampi(level, 0, 4)]

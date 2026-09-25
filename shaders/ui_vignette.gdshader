@@ -1,12 +1,10 @@
 shader_type canvas_item;
-// 屏幕暗角 + 极细扫描线，营造监控大屏质感
+// 轻微暗角，让视线集中在地图中央
 
-uniform float strength = 0.55;
+uniform float strength = 0.28;
 
 void fragment() {
-	vec2 uv = SCREEN_UV;
-	vec2 d = uv - 0.5;
-	float v = smoothstep(0.35, 0.85, length(d * vec2(1.2, 1.0)));
-	float scan = 0.5 + 0.5 * sin(FRAGCOORD.y * 3.14159);
-	COLOR = vec4(0.0, 0.01, 0.02, v * strength + scan * 0.025);
+	vec2 d = SCREEN_UV - 0.5;
+	float v = smoothstep(0.45, 0.95, length(d * vec2(1.25, 1.0)));
+	COLOR = vec4(0.0, 0.0, 0.0, v * strength);
 }

@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://g5fypdn7x6gk"
-path="res://.godot/imported/Oxanium-Variable.ttf-0312a1cd1c035a029e688df69f334776.fontdata"
+uid="uid://11ph0i7orf3f"
+path="res://.godot/imported/MaterialSymbolsRounded-Subset.ttf-0ba85b2883f5ffe78d588bdb20c9f0cc.fontdata"
 
 [deps]
 
-source_file="res://assets/fonts/Oxanium-Variable.ttf"
-dest_files=["res://.godot/imported/Oxanium-Variable.ttf-0312a1cd1c035a029e688df69f334776.fontdata"]
+source_file="res://assets/fonts/MaterialSymbolsRounded-Subset.ttf"
+dest_files=["res://.godot/imported/MaterialSymbolsRounded-Subset.ttf-0ba85b2883f5ffe78d588bdb20c9f0cc.fontdata"]
 
 [params]
 
