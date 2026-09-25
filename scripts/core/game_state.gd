@@ -7,7 +7,7 @@ signal radio(entry: Dictionary)          # {time, from, text, kind}
 signal advisor(text: String)              # 值班长对讲提示
 signal day_report(report: Dictionary)
 
-const START_MINUTES := 19.0 * 60.0 + 40.0
+const START_MINUTES := 17.0 * 60.0 + 10.0
 
 var money := 2_400_000.0
 var safety := 70.0          # 群众安全感 0..100

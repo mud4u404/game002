@@ -49,7 +49,7 @@ func setup(p_uid: int, p_kind: String, p_fac: Dictionary, p_spot: Vector3, p_gra
 	_vis = VehicleFactory.build_police(kind, info.body, info.stripe)
 	add_child(_vis.root)
 	position = Vector3(spot.x, 0.2, spot.z)
-	_yaw = PI
+	_yaw = facility.get("yaw", PI)
 	rotation.y = _yaw
 
 
@@ -291,7 +291,7 @@ func tick(dt: float, dm: float) -> bool:
 		_path = PackedVector3Array()
 		if state == State.RETURN:
 			state = State.IDLE
-			_yaw = PI
+			_yaw = facility.get("yaw", PI)
 			rotation.y = _yaw
 		elif state == State.PATROL:
 			start_patrol()

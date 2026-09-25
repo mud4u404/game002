@@ -1,7 +1,7 @@
 extends Node3D
 ## 主菜单：夜间城市俯瞰作背景，指挥系统开机界面。
 
-var city: CityBuilder
+var city: CityMap
 var env: EnvironmentRig
 var cam: RTSCamera
 var ui: Control
@@ -22,21 +22,22 @@ var _clock: Label
 
 func _ready() -> void:
 	GameState.reset()
-	GameState.minutes = 21.5 * 60.0
-	city = CityBuilder.new()
+	GameState.minutes = 19.2 * 60.0
+	city = CityMap.new()
 	add_child(city)
-	city.build(Game.SEED)
 	env = EnvironmentRig.new()
 	add_child(env)
-	var traffic := Traffic.new()
-	add_child(traffic)
-	traffic.setup(city.graph, 220, Game.SEED)
 	cam = RTSCamera.new()
 	cam.input_enabled = false
+	cam.bounds = Rect2(-2000, -2000, 4000, 4000)
 	add_child(cam)
-	cam.set_view(Vector3(-120, 0, 40), 420, 0)
+	cam.set_view(Vector3(-60, 0, 20), 330, 0)
 	env.apply(GameState.time_of_day())
 	_build_ui()
+	await city.build(Game.SEED)
+	var traffic := Traffic.new()
+	add_child(traffic)
+	traffic.setup(city.graph, 150, Game.SEED)
 
 
 func _process(delta: float) -> void:

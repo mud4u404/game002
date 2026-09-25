@@ -33,6 +33,9 @@ func _draw() -> void:
 	var f_reg := UIKit.font("reg")
 	var vr := get_viewport_rect()
 
+	# 街道名
+	_road_labels(zoom, vr)
+
 	# 设施
 	for f in game.city.facilities:
 		var p := _p(f.center)
@@ -149,6 +152,41 @@ func _draw_incident(inc: Incident, t: float, close: bool, vr: Rect2, f_bold: Fon
 		if done:
 			label = "已结案" if inc.state == Incident.S.DONE else "处置失败"
 		_text_c(f_bold, label, p + Vector2(0, r + 18), 13, col, true)
+
+
+var _labels: Array = []
+
+
+func _road_labels(zoom: float, vr: Rect2) -> void:
+	if zoom > 760.0:
+		return
+	if _labels.is_empty():
+		_labels = game.city.road_labels()
+	var night: float = game.env.night
+	var col := Color(0.16, 0.18, 0.21).lerp(Color(0.86, 0.9, 0.95), night)
+	var halo := Color(0.96, 0.95, 0.92, 0.85).lerp(Color(0.02, 0.03, 0.05, 0.85), night)
+	var f := UIKit.font("bold")
+	for L in _labels:
+		if L.cls == "D" and zoom > 380.0:
+			continue
+		var a := _p(Vector3(L.a.x, 0, L.a.y))
+		var b := _p(Vector3(L.b.x, 0, L.b.y))
+		var m := (a + b) * 0.5
+		if not vr.grow(-60).has_point(m):
+			continue
+		var ang := (b - a).angle()
+		if ang > PI * 0.5 or ang < -PI * 0.5:
+			ang += PI
+		var size := 14 if L.cls in ["A", "B"] else 12
+		var text: String = L.name
+		# 竖向道路逐字竖排更易读
+		var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		if w > a.distance_to(b) * 0.8:
+			continue
+		draw_set_transform(m, ang, Vector2.ONE)
+		draw_string_outline(f, Vector2(-w * 0.5, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, halo)
+		draw_string(f, Vector2(-w * 0.5, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _clip_to_rect(c: Vector2, p: Vector2, r: Rect2) -> Vector2:

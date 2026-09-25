@@ -1,56 +1,40 @@
 class_name RoadGraph
 extends RefCounted
-## 规则网格路网：节点=路口，边=路段。负责寻路、定位描述、车道偏移。
+## 通用路网图：节点=路口/折点，边=路段。负责寻路、定位描述、车道偏移。
 
-const LANE_OFFSET := 3.2
+const LANE_OFFSET := 2.8
 
-var cols := 0          # 节点列数
-var rows := 0
-var xs: Array[float] = []
-var zs: Array[float] = []
 var positions: Array[Vector3] = []
 var adj: Array = []            # node -> Array[int]
-var edges: Array = []          # {a, b, len, name, horizontal}
-var edge_lookup := {}          # "a:b" -> edge index
-var names_h: Array = []
-var names_v: Array = []
-var inner_min := Vector2i.ZERO
-var inner_max := Vector2i.ZERO
+var edges: Array = []          # {a, b, len, name, road, width}
+var node_roads: Array = []     # node -> Array[String]（经过该节点的道路名）
+var edge_lookup := {}
 var astar := AStar3D.new()
 
 
-func setup_lines(p_xs: Array[float], p_zs: Array[float]) -> void:
-	xs = p_xs
-	zs = p_zs
-	cols = xs.size()
-	rows = zs.size()
-	positions.clear()
-	adj.clear()
-	for j in rows:
-		for i in cols:
-			var p := Vector3(xs[i], 0.0, zs[j])
-			positions.append(p)
-			adj.append([])
-			astar.add_point(node_id(i, j), p)
+func add_node(p: Vector3) -> int:
+	var id := positions.size()
+	positions.append(p)
+	adj.append([])
+	node_roads.append([])
+	astar.add_point(id, p)
+	return id
 
 
-func node_id(i: int, j: int) -> int:
-	return j * cols + i
-
-
-func node_ij(id: int) -> Vector2i:
-	return Vector2i(id % cols, id / cols)
-
-
-func add_edge(a: int, b: int, horizontal: bool) -> void:
-	var e := {"a": a, "b": b, "len": positions[a].distance_to(positions[b]), "horizontal": horizontal}
-	var ij := node_ij(a)
-	e["name"] = names_h[ij.y] if horizontal else names_v[ij.x]
+func add_edge(a: int, b: int, road: String, width: float) -> int:
+	var k := _key(a, b)
+	if edge_lookup.has(k) or a == b:
+		return edge_lookup.get(k, -1)
+	var e := {"a": a, "b": b, "len": positions[a].distance_to(positions[b]), "name": road, "road": road, "width": width}
 	edges.append(e)
-	edge_lookup[_key(a, b)] = edges.size() - 1
+	edge_lookup[k] = edges.size() - 1
 	adj[a].append(b)
 	adj[b].append(a)
+	for n in [a, b]:
+		if not (road in node_roads[n]):
+			node_roads[n].append(road)
 	astar.connect_points(a, b, true)
+	return edges.size() - 1
 
 
 func _key(a: int, b: int) -> String:
@@ -61,36 +45,33 @@ func edge_between(a: int, b: int) -> int:
 	return edge_lookup.get(_key(a, b), -1)
 
 
-func is_inner_node(id: int) -> bool:
-	var ij := node_ij(id)
-	return ij.x >= inner_min.x and ij.x <= inner_max.x and ij.y >= inner_min.y and ij.y <= inner_max.y
+func is_inner_edge(_e: int) -> bool:
+	return true
 
 
-func is_inner_edge(e: int) -> bool:
-	return is_inner_node(edges[e].a) and is_inner_node(edges[e].b)
-
-
-func nearest_node(p: Vector3, inner_only := false) -> int:
-	var i := _closest(xs, p.x)
-	var j := _closest(zs, p.z)
-	var best := node_id(i, j)
-	if adj[best].is_empty() or (inner_only and not is_inner_node(best)):
-		var bd := INF
-		for id in positions.size():
-			if adj[id].is_empty() or (inner_only and not is_inner_node(id)):
-				continue
-			var d := positions[id].distance_squared_to(p)
-			if d < bd:
-				bd = d
-				best = id
+func nearest_node(p: Vector3, _inner_only := false) -> int:
+	var best := 0
+	var bd := INF
+	for id in positions.size():
+		if adj[id].is_empty():
+			continue
+		var d := positions[id].distance_squared_to(p)
+		if d < bd:
+			bd = d
+			best = id
 	return best
 
 
-func _closest(arr: Array[float], v: float) -> int:
-	var best := 0
-	for k in arr.size():
-		if absf(arr[k] - v) < absf(arr[best] - v):
-			best = k
+func nearest_edge_point(p: Vector3) -> Dictionary:
+	var best := {"edge": 0, "t": 0.0, "d": INF}
+	for e in edges.size():
+		var a: Vector3 = positions[edges[e].a]
+		var b: Vector3 = positions[edges[e].b]
+		var ab := b - a
+		var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
+		var d := (a + ab * t).distance_to(p)
+		if d < best.d:
+			best = {"edge": e, "t": t, "d": d}
 	return best
 
 
@@ -111,22 +92,27 @@ func point_on_edge(e: int, t: float) -> Vector3:
 	return positions[edges[e].a].lerp(positions[edges[e].b], t)
 
 
-## 路段上某点的中文位置描述
+## 路段上某点的中文位置描述：沿道路找最近的交叉路口
 func describe(e: int, t: float) -> String:
-	var ed: Dictionary = edges[e]
-	var road: String = ed.name
-	var ca := _cross_name(ed.a, ed.horizontal)
-	var cb := _cross_name(ed.b, ed.horizontal)
-	if t < 0.2:
-		return "%s与%s交叉口" % [road, ca]
-	if t > 0.8:
-		return "%s与%s交叉口" % [road, cb]
-	return "%s（%s—%s段）" % [road, ca, cb]
-
-
-func _cross_name(node: int, horizontal: bool) -> String:
-	var ij := node_ij(node)
-	return names_v[ij.x] if horizontal else names_h[ij.y]
+	var road: String = edges[e].name
+	var p := point_on_edge(e, t)
+	var best := ""
+	var bd := INF
+	for n in positions.size():
+		if node_roads[n].size() < 2 or not (road in node_roads[n]):
+			continue
+		var d := positions[n].distance_to(p)
+		if d < bd:
+			for r in node_roads[n]:
+				if r != road:
+					best = r
+					bd = d
+					break
+	if best == "":
+		return road
+	if bd < 30.0:
+		return "%s与%s交叉口" % [road, best]
+	return "%s（近%s）" % [road, best]
 
 
 ## 由节点序列生成带右侧车道偏移的平滑折线（斜接点）

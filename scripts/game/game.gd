@@ -17,7 +17,7 @@ const INITIAL_UNITS := {
 	"swat_hq": {"swat": 1},
 }
 
-var city: CityBuilder
+var city: CityMap
 var env: EnvironmentRig
 var traffic: Traffic
 var cam: RTSCamera
@@ -37,27 +37,30 @@ var _tut := {}
 var _advisor_t := 0.0
 var _finished: Array = []   # [Incident, remove_at_real_time]
 var _time := 0.0
+var _started := false
 
 
 func _ready() -> void:
 	GameState.reset()
+	if DevTools.args.has("shot-hour"):
+		GameState.minutes = float(DevTools.args["shot-hour"]) * 60.0
 	rng.seed = SEED + 1
-	city = CityBuilder.new()
+	city = CityMap.new()
 	add_child(city)
-	city.build(SEED)
 	env = EnvironmentRig.new()
 	add_child(env)
-	traffic = Traffic.new()
-	add_child(traffic)
-	traffic.setup(city.graph, 220, SEED)
-	_markers = Node3D.new()
-	add_child(_markers)
 	cam = RTSCamera.new()
 	add_child(cam)
-	var inner0 := city.graph.positions[city.graph.node_id(CityBuilder.INNER_MIN, CityBuilder.INNER_MIN)]
-	var inner1 := city.graph.positions[city.graph.node_id(CityBuilder.INNER_MAX, CityBuilder.INNER_MAX)]
-	cam.bounds = Rect2(inner0.x - 60, inner0.z - 60, inner1.x - inner0.x + 120, inner1.z - inner0.z + 120)
-	cam.set_view(Vector3((inner0.x + inner1.x) * 0.5, 0, (inner0.z + inner1.z) * 0.5 - 30), 620, 0)
+	var pr := city.play_rect
+	cam.bounds = pr.grow(-40)
+	cam.set_view(Vector3(pr.get_center().x + 20, 0, pr.get_center().y), 600, 0)
+	env.apply(GameState.time_of_day())
+	await city.build(SEED)
+	traffic = Traffic.new()
+	add_child(traffic)
+	traffic.setup(city.graph, 150, SEED)
+	_markers = Node3D.new()
+	add_child(_markers)
 	cam.clicked.connect(_on_click)
 	cam.right_clicked.connect(_on_right_click)
 	for f in city.facilities:
@@ -70,7 +73,8 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	env.apply(GameState.time_of_day())
-	GameState.post("指挥中心", "夜班交接完毕，江城市公安局滨江分局指挥中心开始值守。", "sys")
+	GameState.post("指挥中心", "晚高峰前交接完毕，江城市公安局滨江分局指挥中心开始值守。", "sys")
+	_started = true
 	_dev_hooks()
 
 
@@ -167,6 +171,8 @@ func recruit(kind: String) -> PoliceUnit:
 
 # ------------------------------------------------------------------ 主循环
 func _process(delta: float) -> void:
+	if not _started:
+		return
 	_time += delta
 	var dt := GameState.scaled_delta(delta)
 	var dm := GameState.advance(delta)
@@ -612,6 +618,8 @@ func _on_right_click(pos: Vector2) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not _started:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_SPACE:
@@ -652,7 +660,7 @@ func _tut_once(key: String, text: String) -> void:
 func _tutorial_tick(delta: float) -> void:
 	_advisor_t += delta
 	if _advisor_t > 1.5:
-		_tut_once("hello", "指挥长，晚上好，我是值班长老周。今晚滨江分局由你坐镇，大屏已经就绪。")
+		_tut_once("hello", "指挥长，你好，我是值班长老周。晚高峰快到了，今晚滨江分局由你坐镇。")
 	if _advisor_t > 9.0:
 		_tut_once("auto", "系统默认开启自动派警，一般警情会自己运转。重大警情会进接警台，得你亲自研判。")
 	if _advisor_t > 18.0 and not incidents.is_empty():
