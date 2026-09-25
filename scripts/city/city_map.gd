@@ -15,22 +15,22 @@ const SIDEWALK := 3.2
 const LM_W := 1024
 
 # 调色板（白天基准，夜间由场景光照压暗）
-const C_LAND := Color("c6c2b8")
-const C_SIDEWALK := Color("cdc9c0")
-const C_CURB := Color("b3afa6")
-const C_ASPHALT := Color("f3f2ee")
-const C_ASPHALT_D := Color("ecebe6")
+const C_LAND := Color("081633")
+const C_SIDEWALK := Color("0a1a3d")
+const C_CURB := Color("143068")
+const C_ASPHALT := Color("2d5fbf")
+const C_ASPHALT_D := Color("1d4390")
 const C_LINE := Color("ffffff")
-const C_YELLOW := Color("e6c56a")
-const C_GRASS := Color("b7cc9f")
-const C_GRASS_D := Color("bdd0a8")
-const C_COMPOUND := Color("c8cdbd")
-const C_PLAZA := Color("cdc9c0")
-const C_OLDTOWN := Color("c9c3b8")
-const C_PARKING := Color("bdbab3")
-const C_TRACK := Color("cf9a86")
-const C_BANK := Color("b9b5ac")
-const C_WATER_EDGE := Color("9fc1d2")
+const C_YELLOW := Color("6fa0ff")
+const C_GRASS := Color("0a2a40")
+const C_GRASS_D := Color("0a283d")
+const C_COMPOUND := Color("0b1d41")
+const C_PLAZA := Color("0a1a3d")
+const C_OLDTOWN := Color("0b1b3f")
+const C_PARKING := Color("0e2350")
+const C_TRACK := Color("143266")
+const C_BANK := Color("3a78e0")
+const C_WATER_EDGE := Color("1b4a8f")
 
 var graph := RoadGraph.new()
 var rng := RandomNumberGenerator.new()
@@ -487,13 +487,13 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 				if rng.randf() < 0.1:
 					continue
 				var bp := _inset(lot, 1.2)
-				_add_building(bp, rng.randf_range(7.0, 12.0), "tile", _pick([Color("e6e1d8"), Color("e2ddd3")]))
+				_add_building(bp, rng.randf_range(7.0, 12.0), "tile", _pick([Color("132c63"), Color("142e66")]))
 		"cbd":
 			patches.append({"poly": inner, "color": C_PLAZA})
 			var o := _obb(inner)
 			var pod := _inset(inner, 5.0)
 			if pod.size() >= 3:
-				_add_building(pod, rng.randf_range(16.0, 26.0), "podium", _pick([Color("e4e3e0"), Color("e0dfdb")]))
+				_add_building(pod, rng.randf_range(16.0, 26.0), "podium", _pick([Color("15306a"), Color("16316c")]))
 				var core := _inset(pod, 3.0)
 				var n := 2 if o.hu > 70.0 else 1
 				for k in n:
@@ -510,13 +510,13 @@ func _fill_zone(b: Dictionary, inner: PackedVector2Array, zone: String, area: fl
 								ba = a
 								best = q
 					if ba > 220.0:
-						_add_building(best, rng.randf_range(110.0, 210.0), "tower", _pick([Color("d9dde2"), Color("d5d9de")]))
+						_add_building(best, rng.randf_range(110.0, 210.0), "tower", _pick([Color("1c3b80"), Color("1d3d84")]))
 			_trees_along(inner, 10.0, 2.5)
 		"commercial":
 			patches.append({"poly": inner, "color": C_PLAZA.darkened(0.03)})
 			for lot in _split(inner, rng.randf_range(600.0, 1200.0), 14.0):
 				var bp := _inset(lot, 1.8)
-				_add_building(bp, rng.randf_range(14.0, 48.0), "flat", _pick([Color("e7e3dc"), Color("e3dfd8")]))
+				_add_building(bp, rng.randf_range(14.0, 48.0), "flat", _pick([Color("142e66"), Color("152f69")]))
 		"residential":
 			_residential(b, inner, area)
 		"park":
@@ -543,7 +543,7 @@ func _residential(_b: Dictionary, inner: PackedVector2Array, area: float) -> voi
 		pass
 	var bb := _bbox(comp)
 	var placed := 0
-	var roof := [Color("ebe8e2"), Color("e7e4de")]
+	var roof := [Color("142e67"), Color("15306a")]
 	# 南北朝向的板楼行列
 	var z := bb.position.y + 9.0
 	while z + 12.0 < bb.end.y - 6.0:
@@ -605,7 +605,7 @@ func _school(inner: PackedVector2Array) -> void:
 	var bw := o.hv * 0.32
 	var bldg := _rect(o.c - o.v * (o.hv - bw - 2.0), o.u, o.v, o.hu * 0.8, bw)
 	if _inside(inner, bldg):
-		_add_building(bldg, 18.0, "flat", Color("e8e2d7"))
+		_add_building(bldg, 18.0, "flat", Color("142e67"))
 	var tc := o.c + o.v * (bw * 0.9)
 	var ta := minf(o.hu * 0.72, 55.0)
 	var tb := minf(o.hv - bw - 4.0, 30.0)
@@ -685,7 +685,7 @@ func _place_facilities() -> void:
 		var bwidth := minf(lot_w * 0.85, 22.0)
 		var bc := lot_c - front * (lot_d - bdepth - 2.0)
 		var bldg := _rect(bc, side, front, bwidth, bdepth)
-		_add_building(bldg, 16.0 if f.type != "patrol_hq" else 22.0, "police", Color("b8cdf2"))
+		_add_building(bldg, 16.0 if f.type != "patrol_hq" else 22.0, "police", Color("2552a8"))
 		var pdepth := minf(lot_d * 2.0 - bdepth * 2.0 - 6.0, 12.0)
 		var pc := lot_c + front * (lot_d - pdepth * 0.5 - 1.0)
 		var phs := minf(lot_w * 0.9, 26.0)
@@ -800,8 +800,8 @@ func _build_water() -> void:
 	var water := MeshInstance3D.new()
 	water.mesh = st.commit()
 	var mat := MeshKit.shader_mat("res://shaders/water_map.gdshader")
-	mat.set_shader_parameter("n1", MeshKit.noise_texture(0.03, 256, true))
-	mat.set_shader_parameter("n2", MeshKit.noise_texture(0.06, 256, true))
+	mat.set_shader_parameter("n1", MeshKit.noise_texture(0.03, 256, false))
+	mat.set_shader_parameter("n2", MeshKit.noise_texture(0.06, 256, false))
 	mat.set_shader_parameter("play_rect", Vector4(play_rect.position.x, play_rect.position.y, play_rect.size.x, play_rect.size.y))
 	water.material_override = mat
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -858,7 +858,7 @@ func _build_bridges() -> void:
 				for s in [-1.0, 1.0]:
 					var c: Vector2 = (a + b) * 0.5 + n * s * (w * 0.5 - 0.4)
 					var basis := Basis.looking_at(Vector3(d.x, 0, d.y), Vector3.UP)
-					MeshKit.box(rails, Vector3(c.x, 0.9, c.y), Vector3(0.5, 1.1, a.distance_to(b)), Color(0.8, 0.8, 0.78), basis)
+					MeshKit.box(rails, Vector3(c.x, 0.9, c.y), Vector3(0.5, 1.1, a.distance_to(b)), Color(0.35, 0.6, 1.0), basis)
 	var dm := MeshInstance3D.new()
 	dm.mesh = deck.commit()
 	dm.material_override = ground_mat
@@ -867,7 +867,7 @@ func _build_bridges() -> void:
 	rm.mesh = rails.commit()
 	var rmat := StandardMaterial3D.new()
 	rmat.vertex_color_use_as_albedo = true
-	rmat.roughness = 0.7
+	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	rm.material_override = rmat
 	add_child(rm)
 

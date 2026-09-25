@@ -48,6 +48,8 @@ func setup(p_uid: int, p_kind: String, p_fac: Dictionary, p_spot: Vector3, p_gra
 	rank = Data.RANKS[_rng.randi() % 3]
 	_vis = VehicleFactory.build_police(kind, info.body, info.stripe)
 	add_child(_vis.root)
+	# 战术图中单位由 HUD 卡片表示，3D 车辆模型隐藏
+	_vis.root.visible = false
 	position = Vector3(spot.x, 0.2, spot.z)
 	_yaw = facility.get("yaw", PI)
 	rotation.y = _yaw

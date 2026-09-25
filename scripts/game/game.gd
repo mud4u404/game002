@@ -56,9 +56,6 @@ func _ready() -> void:
 	cam.set_view(Vector3(pr.get_center().x + 20, 0, pr.get_center().y), 600, 0)
 	env.apply(GameState.time_of_day())
 	await city.build(SEED)
-	traffic = Traffic.new()
-	add_child(traffic)
-	traffic.setup(city.graph, 60, SEED)
 	_markers = Node3D.new()
 	add_child(_markers)
 	cam.clicked.connect(_on_click)
@@ -89,6 +86,8 @@ func _dev_hooks() -> void:
 		hud.open_call(inc)
 		await get_tree().create_timer(1.0).timeout
 		hud.call_panel._on_ask(0, hud.call_panel._q_box.get_child(0))
+		await get_tree().create_timer(1.2).timeout
+		hud.call_panel._on_ask(2, hud.call_panel._q_box.get_child(2))
 	if a.has("test-recruit"):
 		await get_tree().create_timer(0.5).timeout
 		hud.toggle_recruit()
@@ -581,10 +580,10 @@ func pick(screen: Vector2) -> Variant:
 			best_d = d
 			best = inc
 	var unit_best = null
-	var ubd := 18.0
+	var ubd := 22.0
 	for u in units:
 		var p := cam.cam.unproject_position(u.global_position)
-		var d := p.distance_to(screen)
+		var d := minf(p.distance_to(screen), (p + Vector2(0, -28)).distance_to(screen))
 		if d < ubd:
 			ubd = d
 			unit_best = u
@@ -594,7 +593,7 @@ func pick(screen: Vector2) -> Variant:
 		return best
 	for f in city.facilities:
 		var p := cam.cam.unproject_position(f.center)
-		if p.distance_to(screen) < 34.0:
+		if (p + Vector2(0, -30)).distance_to(screen) < 22.0 or p.distance_to(screen) < 12.0:
 			return f
 	return null
 

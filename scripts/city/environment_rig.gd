@@ -16,14 +16,16 @@ func _ready() -> void:
 	sky_mat.sun_angle_max = 20.0
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	env.background_mode = Environment.BG_SKY
+	# 战术图：纯色背景 + 线性色调映射，保证地图配色准确
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.02, 0.05, 0.12)
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	env.tonemap_exposure = 1.05
 	env.tonemap_white = 6.0
-	env.glow_enabled = true
+	env.glow_enabled = false
 	env.glow_normalized = false
 	env.glow_intensity = 0.55
 	env.glow_strength = 1.0
@@ -33,7 +35,7 @@ func _ready() -> void:
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	for i in 7:
 		env.set_glow_level(i, [0.0, 0.6, 1.0, 0.9, 0.7, 0.4, 0.0][i])
-	env.ssao_enabled = true
+	env.ssao_enabled = false
 	env.ssao_radius = 2.5
 	env.ssao_intensity = 0.8
 	env.ssao_power = 1.4
@@ -45,7 +47,7 @@ func _ready() -> void:
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_sky_affect = 0.6
 	env.fog_aerial_perspective = 0.15
-	env.adjustment_enabled = true
+	env.adjustment_enabled = false
 	env.adjustment_contrast = 1.06
 	env.adjustment_saturation = 1.08
 	var we := WorldEnvironment.new()
@@ -53,7 +55,7 @@ func _ready() -> void:
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
-	sun.shadow_enabled = true
+	sun.shadow_enabled = false
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 1100.0
 	sun.shadow_blur = 1.5
@@ -108,7 +110,7 @@ func apply(h: float) -> void:
 	env.ambient_light_energy = lerpf(0.3, 0.55, night)
 	env.fog_light_color = Color(0.68, 0.74, 0.82).lerp(Color(0.06, 0.055, 0.08), night).lerp(Color(0.8, 0.5, 0.35), dusk * 0.5)
 	env.fog_density = lerpf(0.0007, 0.0013, night)
-	env.glow_intensity = lerpf(0.0, 0.18, night)
-	env.tonemap_exposure = lerpf(0.82, 1.15, night) * (lerpf(1.1, 1.6, night) if compat else 1.0)
+	env.glow_intensity = 0.0
+	env.tonemap_exposure = 1.0
 	if compat:
 		env.ambient_light_energy *= lerpf(1.0, 1.5, night)

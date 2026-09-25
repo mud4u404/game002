@@ -21,13 +21,11 @@ func _ready() -> void:
 	cam.input_enabled = false
 	cam.bounds = Rect2(-2000, -2000, 4000, 4000)
 	add_child(cam)
-	cam.set_view(Vector3(-40, 0, 30), 300, 0)
+	cam.set_view(Vector3(-40, 0, 30), 480, 0)
 	env.apply(GameState.time_of_day())
 	_build_ui()
 	await city.build(Game.SEED)
-	var traffic := Traffic.new()
-	add_child(traffic)
-	traffic.setup(city.graph, 150, Game.SEED)
+
 
 
 func _process(delta: float) -> void:

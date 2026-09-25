@@ -235,10 +235,10 @@ static func money_str(v: float) -> String:
 
 static func level_color(level: int) -> Color:
 	match level:
-		1: return Color("4ea1ff")
-		2: return Color("ffc53d")
-		3: return Color("ff8a24")
-		_: return Color("ff4d4f")
+		1: return Color("f0a020")
+		2: return Color("ff7a1a")
+		3: return Color("ff3d4a")
+		_: return Color("e0287a")
 
 static func level_name(level: int) -> String:
 	return ["", "一般", "较大", "重大", "特别重大"][clampi(level, 0, 4)]

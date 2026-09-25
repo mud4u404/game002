@@ -1,22 +1,22 @@
 class_name UIKit
 extends RefCounted
-## 界面视觉规范：配色、字体、图标、面板与按钮样式。
-## 原则：地图为主、面板克制；纯色深灰面板 + 单一主色（警蓝）；状态色只用于表达状态。
+## 界面视觉规范（参照《112》）：深海军蓝半透明面板 + 细青蓝描边、胶囊按钮、
+## 六边形图标框；实色按钮只用蓝（确认）与红（紧急/结束）。
 
-const ACCENT := Color("3d7bff")
-const CYAN := ACCENT          # 兼容旧名
+const ACCENT := Color("2f7bff")
+const CYAN := Color("4fb4ff")
 const BLUE := ACCENT
 const AMBER := Color("ffb020")
-const RED := Color("ff4d4f")
-const GREEN := Color("35c98a")
-const TEXT := Color("e9edf1")
-const TEXT_DIM := Color("9ba6b2")
-const TEXT_MUTED := Color("6b7682")
-const BG := Color(0.082, 0.098, 0.118, 0.95)
-const BG2 := Color("1c2128")
-const BG3 := Color("262c34")
-const LINE := Color("2e353e")
-const NAVY := Color("1d3a73")
+const RED := Color("ff3d4a")
+const GREEN := Color("2fe0a0")
+const TEXT := Color("eaf3ff")
+const TEXT_DIM := Color("9db8dc")
+const TEXT_MUTED := Color("6582ad")
+const BG := Color(0.035, 0.08, 0.18, 0.92)
+const BG2 := Color(0.06, 0.13, 0.28, 0.95)
+const BG3 := Color(0.09, 0.19, 0.38, 0.95)
+const LINE := Color(0.25, 0.55, 1.0, 0.45)
+const NAVY := Color("12306e")
 
 static var _fonts := {}
 
@@ -40,7 +40,7 @@ static func icon(name: String) -> String:
 static func theme() -> Theme:
 	var t := Theme.new()
 	t.default_font = font("reg")
-	t.default_font_size = 15
+	t.default_font_size = 14
 	t.set_color("font_color", "Label", TEXT)
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
 		t.set_stylebox(state, "Button", button_box(state, "secondary"))
@@ -50,36 +50,36 @@ static func theme() -> Theme:
 	t.set_color("font_disabled_color", "Button", TEXT_MUTED)
 	t.set_color("font_focus_color", "Button", TEXT)
 	t.set_font("font", "Button", font("bold"))
-	t.set_font_size("font_size", "Button", 14)
+	t.set_font_size("font_size", "Button", 13)
 	var grab := StyleBoxFlat.new()
-	grab.bg_color = Color(1, 1, 1, 0.14)
+	grab.bg_color = Color(0.3, 0.6, 1.0, 0.35)
 	grab.set_corner_radius_all(3)
-	grab.content_margin_left = 4
+	grab.content_margin_left = 3
 	t.set_stylebox("grabber", "VScrollBar", grab)
 	t.set_stylebox("grabber_highlight", "VScrollBar", grab)
 	t.set_stylebox("grabber_pressed", "VScrollBar", grab)
 	var sc := StyleBoxEmpty.new()
-	sc.content_margin_left = 4
+	sc.content_margin_left = 3
 	t.set_stylebox("scroll", "VScrollBar", sc)
 	var tip := StyleBoxFlat.new()
-	tip.bg_color = Color("0f1216")
-	tip.set_corner_radius_all(6)
+	tip.bg_color = Color(0.03, 0.07, 0.16, 0.97)
+	tip.border_color = LINE
+	tip.set_border_width_all(1)
+	tip.set_corner_radius_all(4)
 	tip.set_content_margin_all(8)
 	t.set_stylebox("panel", "TooltipPanel", tip)
 	t.set_color("font_color", "TooltipLabel", TEXT)
 	return t
 
 
-## 面板底板
-static func panel_box(radius := 10, bg := BG, pad := 14) -> StyleBoxFlat:
+static func panel_box(radius := 6, bg := BG, pad := 14) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
 	b.bg_color = bg
 	b.border_color = LINE
 	b.set_border_width_all(1)
 	b.set_corner_radius_all(radius)
-	b.shadow_color = Color(0, 0, 0, 0.32)
-	b.shadow_size = 10
-	b.shadow_offset = Vector2(0, 3)
+	b.shadow_color = Color(0, 0.02, 0.08, 0.5)
+	b.shadow_size = 12
 	b.set_content_margin_all(pad)
 	b.anti_aliasing = true
 	return b
@@ -87,39 +87,43 @@ static func panel_box(radius := 10, bg := BG, pad := 14) -> StyleBoxFlat:
 
 static func button_box(state: String, kind := "secondary", color := ACCENT) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
-	b.set_corner_radius_all(7)
+	b.set_corner_radius_all(4)
 	b.content_margin_left = 14
 	b.content_margin_right = 14
-	b.content_margin_top = 7
-	b.content_margin_bottom = 7
+	b.content_margin_top = 6
+	b.content_margin_bottom = 6
 	b.anti_aliasing = true
 	match kind:
 		"primary":
 			b.bg_color = color
 			if state == "hover":
-				b.bg_color = color.lightened(0.12)
+				b.bg_color = color.lightened(0.15)
 			elif state == "pressed":
-				b.bg_color = color.darkened(0.12)
+				b.bg_color = color.darkened(0.15)
 			elif state == "disabled":
 				b.bg_color = Color(color.r, color.g, color.b, 0.25)
 		"ghost":
-			b.bg_color = Color(1, 1, 1, 0.0)
+			b.bg_color = Color(0, 0, 0, 0)
 			if state == "hover":
-				b.bg_color = Color(1, 1, 1, 0.07)
+				b.bg_color = Color(0.3, 0.6, 1.0, 0.14)
 			elif state == "pressed":
-				b.bg_color = Color(1, 1, 1, 0.12)
+				b.bg_color = Color(0.3, 0.6, 1.0, 0.24)
 		"active":
-			b.bg_color = ACCENT
+			b.bg_color = Color(0.18, 0.48, 1.0, 0.35)
+			b.border_color = CYAN
+			b.set_border_width_all(1)
 		_:
-			b.bg_color = BG3
+			b.bg_color = Color(0.1, 0.25, 0.55, 0.25)
 			b.border_color = LINE
 			b.set_border_width_all(1)
 			if state == "hover":
-				b.bg_color = BG3.lightened(0.08)
+				b.bg_color = Color(0.18, 0.4, 0.85, 0.35)
+				b.border_color = CYAN
 			elif state == "pressed":
-				b.bg_color = BG3.darkened(0.15)
+				b.bg_color = Color(0.18, 0.4, 0.85, 0.5)
 			elif state == "disabled":
-				b.bg_color = Color(BG3.r, BG3.g, BG3.b, 0.5)
+				b.bg_color = Color(0.1, 0.2, 0.4, 0.15)
+				b.border_color = Color(0.3, 0.45, 0.7, 0.25)
 	if state == "focus":
 		b.bg_color = Color(0, 0, 0, 0)
 		b.border_color = Color(0, 0, 0, 0)
@@ -132,7 +136,7 @@ static func _style(btn: Button, kind: String, color := ACCENT) -> void:
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
-static func button(text: String, size := 14, kind := "secondary") -> Button:
+static func button(text: String, size := 13, kind := "secondary") -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.focus_mode = Control.FOCUS_NONE
@@ -142,15 +146,13 @@ static func button(text: String, size := 14, kind := "secondary") -> Button:
 	return btn
 
 
-## 实色主按钮（可指定颜色）
-static func accent_button(text: String, color := ACCENT, size := 14) -> Button:
+static func accent_button(text: String, color := ACCENT, size := 13) -> Button:
 	var btn := button(text, size, "primary")
 	_style(btn, "primary", color)
 	return btn
 
 
-## 图标 + 文字按钮
-static func icon_text_button(icon_name: String, text: String, kind := "secondary", color := ACCENT, size := 14) -> Button:
+static func icon_text_button(icon_name: String, text: String, kind := "secondary", color := ACCENT, size := 13) -> Button:
 	var btn := button("", size, kind)
 	_style(btn, kind, color)
 	var h := HBoxContainer.new()
@@ -173,20 +175,18 @@ static func icon_button(icon_name: String, tooltip := "", size := 20, kind := "g
 	var btn := button(icon(icon_name), size, kind)
 	btn.add_theme_font_override("font", font("icon"))
 	btn.tooltip_text = tooltip
-	var sb: StyleBoxFlat = btn.get_theme_stylebox("normal")
-	btn.custom_minimum_size = Vector2(size + 18, size + 16)
+	btn.custom_minimum_size = Vector2(size + 16, size + 14)
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var b: StyleBoxFlat = button_box(state, kind)
-		b.content_margin_left = 6
-		b.content_margin_right = 6
-		b.content_margin_top = 4
-		b.content_margin_bottom = 4
+		b.content_margin_left = 5
+		b.content_margin_right = 5
+		b.content_margin_top = 3
+		b.content_margin_bottom = 3
 		btn.add_theme_stylebox_override(state, b)
-	var _unused := sb
 	return btn
 
 
-static func label(text: String, size := 15, color := TEXT, kind := "reg") -> Label:
+static func label(text: String, size := 14, color := TEXT, kind := "reg") -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_override("font", font(kind))
@@ -202,7 +202,6 @@ static func icon_label(icon_name: String, size := 20, color := TEXT) -> Label:
 	return l
 
 
-## 兼容旧接口：小号辅助文字
 static func tag(text: String, color := TEXT_MUTED, size := 12) -> Label:
 	return label(text, size, color)
 
@@ -220,7 +219,6 @@ static func fmt_min(m: float) -> String:
 	return "%d:%02d" % [mm, int((maxf(m, 0.0) - mm) * 60.0)]
 
 
-## 在 CanvasItem 上绘制图标字形（居中）
 static func draw_icon(ci: CanvasItem, name: String, center: Vector2, size: int, color: Color) -> void:
 	var f := font("icon")
 	var ch := icon(name)
@@ -236,8 +234,7 @@ static func draw_text_c(ci: CanvasItem, text: String, center: Vector2, size: int
 	ci.draw_string(f, center + Vector2(-w * 0.5, size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
-## 圆角矩形（用 StyleBoxFlat 绘制）
-static func draw_round_rect(ci: CanvasItem, r: Rect2, color: Color, radius := 6.0, border := Color(0, 0, 0, 0), bw := 0) -> void:
+static func draw_round_rect(ci: CanvasItem, r: Rect2, color: Color, radius := 4.0, border := Color(0, 0, 0, 0), bw := 0) -> void:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = color
 	sb.set_corner_radius_all(int(radius))
@@ -248,11 +245,42 @@ static func draw_round_rect(ci: CanvasItem, r: Rect2, color: Color, radius := 6.
 	sb.draw(ci.get_canvas_item(), r)
 
 
-## 状态小标签（圆角色块 + 文字），返回宽度
 static func draw_chip(ci: CanvasItem, text: String, pos: Vector2, color: Color, size := 12) -> float:
 	var f := font("bold")
 	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 14.0
 	var h := size + 8.0
-	draw_round_rect(ci, Rect2(pos, Vector2(w, h)), with_alpha(color, 0.18), h * 0.5)
+	draw_round_rect(ci, Rect2(pos, Vector2(w, h)), with_alpha(color, 0.2), h * 0.5, with_alpha(color, 0.7), 1)
 	ci.draw_string(f, pos + Vector2(7, h * 0.5 + size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 	return w
+
+
+## 尖顶六边形顶点
+static func hex_points(c: Vector2, r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in 6:
+		var a := -PI / 2 + TAU * k / 6.0
+		pts.append(c + Vector2(cos(a), sin(a)) * r)
+	return pts
+
+
+static func draw_hex(ci: CanvasItem, c: Vector2, r: float, fill: Color, border := Color(0, 0, 0, 0), bw := 0.0) -> void:
+	var pts := hex_points(c, r)
+	ci.draw_colored_polygon(pts, fill)
+	if bw > 0.0:
+		var ol := pts.duplicate()
+		ol.append(pts[0])
+		ci.draw_polyline(ol, border, bw, true)
+
+
+## 沿六边形边框绘制进度（0..1，从顶点顺时针）
+static func draw_hex_progress(ci: CanvasItem, c: Vector2, r: float, frac: float, color: Color, width := 3.0) -> void:
+	var pts := hex_points(c, r)
+	var total := 6.0 * frac
+	var line := PackedVector2Array([pts[0]])
+	for k in 6:
+		var seg := clampf(total - k, 0.0, 1.0)
+		if seg <= 0.0:
+			break
+		line.append(pts[k].lerp(pts[(k + 1) % 6], seg))
+	if line.size() >= 2:
+		ci.draw_polyline(line, color, width, true)

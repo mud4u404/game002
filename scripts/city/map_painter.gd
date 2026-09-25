@@ -26,19 +26,23 @@ func _draw() -> void:
 	var rv := map.river_poly.duplicate()
 	if rv.size() > 2:
 		rv.append(rv[0])
-		draw_polyline(rv, CityMap.C_BANK, 3.0, true)
+		draw_polyline(rv, Color(0.23, 0.47, 0.88, 0.25), 9.0, true)
+		draw_polyline(rv, CityMap.C_BANK, 2.0, true)
 	# 道路：先铺所有沥青，再画标线
 	var order := map.roads.duplicate()
 	order.sort_custom(func(a, b): return a.w < b.w)
-	# 路缘描边 → 路面，保证道路在街区上清晰可辨
+	# 战术图风格：道路是发光的蓝色线条（外层柔光 + 内芯）
 	for r in order:
-		_round_polyline(r.pts, CityMap.C_CURB, r.w + 1.4)
+		var w: float = {"A": 6.0, "B": 4.6, "C": 3.2, "D": 2.0}[r.cls]
+		_round_polyline(r.pts, Color(0.16, 0.36, 0.8, 0.07), w * 3.0)
+		_round_polyline(r.pts, Color(0.18, 0.4, 0.85, 0.16), w * 1.6)
 	for r in order:
-		_round_polyline(r.pts, CityMap.C_ASPHALT if r.cls != "D" else CityMap.C_ASPHALT_D, r.w)
-	for r in map.roads:
-		if r.cls in ["A", "B"]:
-			var smp := _sample(r)
-			_line(smp, 0.0, CityMap.C_YELLOW, 0.35 if r.cls == "A" else 0.25)
+		var w2: float = {"A": 6.0, "B": 4.6, "C": 3.2, "D": 2.0}[r.cls]
+		var core: Color = {"A": Color("3570db"), "B": Color("2b5fc2"), "C": Color("214ea3"), "D": Color("183c7d")}[r.cls]
+		_round_polyline(r.pts, core, w2)
+	for r in order:
+		if r.cls == "A":
+			_round_polyline(r.pts, Color("8ab4ff"), 0.9)
 	_boundary()
 
 
@@ -191,5 +195,5 @@ func _boundary() -> void:
 		var d := (b - a) / L
 		var s := 0.0
 		while s < L:
-			draw_line(a + d * s, a + d * minf(s + 10.0, L), Color(0.12, 0.3, 0.75, 0.85), 1.6, true)
+			draw_line(a + d * s, a + d * minf(s + 10.0, L), Color(0.45, 0.7, 1.0, 0.7), 1.6, true)
 			s += 16.0
