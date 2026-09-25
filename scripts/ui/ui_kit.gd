@@ -231,9 +231,11 @@ static func draw_icon(ci: CanvasItem, name: String, center: Vector2, size: int, 
 	ci.draw_string(f, center + Vector2(-sz.x * 0.5, (asc - desc) * 0.5), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
-static func draw_text_c(ci: CanvasItem, text: String, center: Vector2, size: int, color: Color, kind := "bold") -> void:
+static func draw_text_c(ci: CanvasItem, text: String, center: Vector2, size: int, color: Color, kind := "bold", halo := 0) -> void:
 	var f := font(kind)
 	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	if halo > 0:
+		ci.draw_string_outline(f, center + Vector2(-w * 0.5, size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, halo, Color(0.01, 0.04, 0.12, 0.92))
 	ci.draw_string(f, center + Vector2(-w * 0.5, size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 

@@ -22,6 +22,7 @@ var env: EnvironmentRig
 var traffic: Traffic
 var cam: RTSCamera
 var hud: HUD
+var ops: Ops
 var units: Array = []
 var incidents: Array = []
 var selected = null
@@ -58,6 +59,7 @@ func _ready() -> void:
 	await city.build(SEED)
 	_markers = Node3D.new()
 	add_child(_markers)
+	ops = Ops.new(self)
 	cam.clicked.connect(_on_click)
 	cam.right_clicked.connect(_on_right_click)
 	for f in city.facilities:
@@ -91,6 +93,28 @@ func _dev_hooks() -> void:
 	if a.has("test-recruit"):
 		await get_tree().create_timer(0.5).timeout
 		hud.toggle_recruit()
+	if a.has("layers"):
+		for id in str(a["layers"]).split(","):
+			hud.toggle_layer(id)
+	if a.has("test-suspect"):
+		var inc := spawn_incident("robbery")
+		if inc.state == Incident.S.CALL:
+			classify(inc, "robbery")
+		await get_tree().create_timer(float(a.get("suspect-wait", "4"))).timeout
+		for sp in ops.suspects:
+			if not a.has("suspect-hidden"):
+				sp.mark_seen("天网")
+			if a.has("test-checkpoint"):
+				ops.place_checkpoint(sp.pos + sp.heading() * 160.0)
+			select(sp)
+			cam.focus_on(sp.pos, 380)
+	if a.has("test-zone"):
+		await get_tree().create_timer(1.0).timeout
+		for u in units:
+			if u.kind == "patrol":
+				u.set_zone(Vector3(-150, 0, 40), 150.0)
+				select(u)
+				break
 	if a.has("test-select"):
 		await get_tree().create_timer(2.0).timeout
 		for inc in incidents:
@@ -183,6 +207,7 @@ func _process(delta: float) -> void:
 
 	for inc in incidents.duplicate():
 		_tick_incident(inc, dm)
+	ops.tick(delta, dt, dm)
 
 	# 已结案警情延迟移除
 	for pair in _finished.duplicate():
@@ -200,7 +225,8 @@ func _process(delta: float) -> void:
 	for inc in incidents:
 		if inc.is_active():
 			active += 1
-	var rate := 0.19 * Data.hour_intensity(GameState.hour()) * (1.0 + (GameState.day() - 1) * 0.12)
+	# 见警率压降发案：路面警力越密，整体发案率越低（0.45 ~ 1 倍）
+	var rate := 0.19 * Data.hour_intensity(GameState.hour()) * (1.0 + (GameState.day() - 1) * 0.12) * (0.45 + 0.55 * ops.suppress) * 1.25
 	if active < 16 and rng.randf() < rate * dm:
 		spawn_incident()
 
@@ -219,7 +245,8 @@ func _process(delta: float) -> void:
 		for inc in incidents:
 			if inc.is_active() and inc.state != Incident.S.CALL:
 				load += inc.level()
-		GameState.safety = clampf(GameState.safety + ((64.0 - GameState.safety) * 0.006 - load * 0.006) * dm, 0.0, 100.0)
+		var target := 56.0 + 16.0 * ops.seen_rate
+		GameState.safety = clampf(GameState.safety + ((target - GameState.safety) * 0.006 - load * 0.006) * dm, 0.0, 100.0)
 		GameState.opinion = clampf(GameState.opinion + (62.0 - GameState.opinion) * 0.003 * dm, 0.0, 100.0)
 
 	_tutorial_tick(delta)
@@ -246,7 +273,7 @@ func spawn_incident(force_type := "") -> Incident:
 			type_id = "dispute"
 	var spot := {}
 	for tries in 12:
-		spot = city.random_incident_spot(rng)
+		spot = ops.pick_spot(rng) if force_type == "" else city.random_incident_spot(rng)
 		var ok := true
 		for other in incidents:
 			if other.is_active() and other.spot.pos.distance_to(spot.pos) < 50.0:
@@ -278,6 +305,9 @@ func spawn_incident(force_type := "") -> Incident:
 	inc.state = Incident.S.CALL if not inc.call.is_empty() else Incident.S.WAITING
 	incidents.append(inc)
 	inc.build_marker(_markers)
+	ops.note_incident(spot.pos, float(lvl))
+	if Data.INCIDENTS[type_id].get("flee", false):
+		ops.spawn_suspect(inc)
 	GameState.stats.total += 1
 	if inc.state == Incident.S.CALL:
 		GameState.post("110 接警台", "新来电：%s附近群众报警，等待接警研判。" % inc.desc(), "call")
@@ -353,6 +383,8 @@ func _escalate(inc: Incident) -> void:
 	inc.shown_type = esc
 	inc.deadline = float(Data.INCIDENTS[esc].deadline)
 	inc.escalations += 1
+	if Data.INCIDENTS[esc].get("flee", false):
+		ops.spawn_suspect(inc)
 	GameState.adjust(-1.5 * lvl_before, -1.2)
 	GameState.post("指挥中心", "注意！%s警情升级为「%s」！" % [inc.desc(), inc.title()], "lv%d" % inc.level())
 	cam.shake(0.6)
@@ -417,6 +449,8 @@ func ask(inc: Incident, idx: int) -> String:
 	if idx in inc.asked:
 		return ""
 	inc.asked.append(idx)
+	if "{road}" in str(inc.call.questions[idx].a):
+		ops.tip_off(inc)
 	return answer_text(inc, idx)
 
 
@@ -555,8 +589,11 @@ func recall(u: PoliceUnit) -> void:
 func patrol(u: PoliceUnit) -> void:
 	if u.incident:
 		u.incident.unassign(u)
+	u.patrol_center = u.facility.center
+	u.patrol_radius = u.info.patrol_radius
+	u.zone_set = false
 	u.start_patrol()
-	GameState.post(u.callsign, "收到，恢复街面巡逻。", "unit")
+	GameState.post(u.callsign, "收到，恢复辖区巡逻。", "unit")
 	units_changed.emit()
 
 
@@ -565,7 +602,7 @@ func select(obj) -> void:
 	selected = obj
 	selection_changed.emit(obj)
 	if obj is PoliceUnit:
-		_tut_once("select_unit", "选中单位后：右键点警情可手动派警，右键点路面可机动部署。")
+		_tut_once("select_unit", "选中单位后：右键点警情可手动派警；右键点路面，巡逻单位会在那一片划定巡区。")
 
 
 func pick(screen: Vector2) -> Variant:
@@ -579,6 +616,14 @@ func pick(screen: Vector2) -> Variant:
 		if d < best_d:
 			best_d = d
 			best = inc
+	for sp in ops.suspects:
+		if sp.state != Suspect.S.FLEE:
+			continue
+		var p := cam.cam.unproject_position(sp.pos if sp.seen else sp.last_seen)
+		var d := minf(p.distance_to(screen), (p + Vector2(0, -24)).distance_to(screen))
+		if d < best_d:
+			best_d = d
+			best = sp
 	var unit_best = null
 	var ubd := 22.0
 	for u in units:
@@ -599,20 +644,42 @@ func pick(screen: Vector2) -> Variant:
 
 
 func _on_click(pos: Vector2) -> void:
+	if ops.placing:
+		if ops.place_checkpoint(cam.ground_point(pos)):
+			_tut_once("checkpoint", "卡点设好了。嫌疑人从卡点经过就会被当场拦截，提前卡住逃跑方向的主干道最有效。")
+		ops.placing = false
+		hud.update_dock()
+		return
 	select(pick(pos))
 
 
+## 巡区半径（米）：社区警务车守片，巡逻车与铁骑覆盖更大
+const ZONE_RADIUS := {"community": 110.0, "patrol": 150.0, "traffic": 190.0}
+
+
 func _on_right_click(pos: Vector2) -> void:
+	if ops.placing:
+		ops.placing = false
+		hud.update_dock()
+		return
 	if not (selected is PoliceUnit):
 		return
 	var u: PoliceUnit = selected
 	var target = pick(pos)
 	if target is Incident:
 		assign(u, target, true)
+	elif target is Suspect:
+		ops.order_chase(u, target)
 	else:
 		var g := cam.ground_point(pos)
-		u.move_to(g)
-		GameState.post(u.callsign, "收到，前往指定区域布控。", "unit")
+		if u.info.patrol:
+			u.set_zone(g, ZONE_RADIUS.get(u.kind, 150.0))
+			var near := city.graph.nearest_edge_point(g)
+			GameState.post(u.callsign, "收到，转入%s巡区，守点巡逻。" % city.graph.describe(near.edge, near.t), "unit")
+			_tut_once("zone", "巡区设好了。这组警力会一直在这片巡逻，处警后也会回到这里。打开「热力」图层，把巡区压在红色高发区上。")
+		else:
+			u.move_to(g)
+			GameState.post(u.callsign, "收到，前往指定区域布控。", "unit")
 		units_changed.emit()
 
 
@@ -639,7 +706,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud.toggle_recruit()
 			KEY_L:
 				hud.toggle_log()
+			KEY_C:
+				hud.toggle_checkpoint()
+			KEY_H:
+				hud.toggle_layer("heat")
 			KEY_ESCAPE:
+				if ops.placing:
+					ops.placing = false
+					hud.update_dock()
+					return
 				if hud.close_overlays():
 					return
 				select(null)
@@ -648,6 +723,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					cam.focus_on(selected.global_position, 220)
 				elif selected is Incident:
 					cam.focus_on(selected.spot.pos, 220)
+				elif selected is Suspect:
+					cam.focus_on(selected.last_seen, 260)
 
 
 # ------------------------------------------------------------------ 教学（值班长对讲）
@@ -669,6 +746,10 @@ func _tutorial_tick(delta: float) -> void:
 	for inc in incidents:
 		if inc.state == Incident.S.CALL:
 			_tut_once("first_call", "接警台有来电！按空格或点来电卡片接听。多问一句，少跑一趟。")
+			break
+	for sp in ops.suspects:
+		if sp.state == Suspect.S.FLEE:
+			_tut_once("suspect", "抢劫嫌疑人正在逃窜！红色标记是天网最后比中的位置。选中巡逻车右键嫌疑人可以追缉，按 C 在他逃跑方向的路上设卡拦截。")
 			break
 	if _advisor_t > 150.0:
 		_tut_once("recruit", "经费宽裕的话，按 R 打开警力部署，招募新的编组。")

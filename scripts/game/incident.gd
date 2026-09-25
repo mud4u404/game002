@@ -25,6 +25,7 @@ var marker: Node3D
 var ring_mat: ShaderMaterial
 var beam_mat: ShaderMaterial
 var escalations := 0
+var suspect = null            # Suspect（抢劫等警情的逃逸嫌疑人）
 
 
 func data() -> Dictionary:

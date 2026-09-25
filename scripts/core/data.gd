@@ -71,7 +71,7 @@ const INCIDENTS := {
 		"match": {"community": 1.0, "patrol": 1.5, "traffic": 0.7, "swat": 1.2}, "icon": "窃"},
 	"dui": {"name": "醉驾", "gi": "no_drinks", "level": 2, "force": 1, "need": 1, "dur": 10.0, "deadline": 16.0, "esc": "traffic_major",
 		"match": {"community": 0.6, "patrol": 1.1, "traffic": 1.8, "swat": 0.5}, "icon": "驾"},
-	"robbery": {"name": "抢劫", "gi": "back_hand", "level": 3, "force": 2, "need": 2, "dur": 20.0, "deadline": 16.0, "esc": "armed",
+	"robbery": {"name": "抢劫", "gi": "back_hand", "level": 3, "force": 2, "need": 2, "dur": 20.0, "deadline": 16.0, "esc": "armed", "flee": true,
 		"match": {"community": 0.8, "patrol": 1.5, "traffic": 0.9, "swat": 1.4}, "icon": "抢"},
 	"traffic_major": {"name": "交通事故（伤亡）", "gi": "car_crash", "level": 3, "force": 0, "need": 2, "dur": 28.0, "deadline": 16.0, "esc": "",
 		"match": {"community": 0.7, "patrol": 0.9, "traffic": 1.8, "swat": 0.6}, "icon": "伤"},

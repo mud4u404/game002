@@ -2,10 +2,10 @@ class_name PoliceUnit
 extends Node3D
 ## 警务单位：待命 / 巡逻 / 出警 / 处置 / 返回。沿路网右侧车道行驶。
 
-enum State { IDLE, PATROL, ENROUTE, ONSCENE, RETURN, MOVE }
-const STATE_NAMES := ["待命", "巡逻", "出警", "处置", "返回", "机动"]
+enum State { IDLE, PATROL, ENROUTE, ONSCENE, RETURN, MOVE, CHASE }
+const STATE_NAMES := ["待命", "巡逻", "出警", "处置", "返回", "机动", "追缉"]
 const STATE_COLORS := [Color("8a96a3"), Color("4ea1ff"), Color("ff9f1a"),
-	Color("ff4d4f"), Color("7f93aa"), Color("8fb8ff")]
+	Color("ff4d4f"), Color("7f93aa"), Color("8fb8ff"), Color("ff3d4a")]
 
 var uid := 0
 var kind := ""
@@ -22,7 +22,11 @@ var leader := ""
 var rank := ""
 var graph: RoadGraph
 var eta_min := 0.0
-var resting := false       # 轮休中：返回驻地恢复体力
+var resting := false
+var patrol_center := Vector3.ZERO   # 巡区中心（默认驻地）
+var patrol_radius := 0.0
+var zone_set := false
+var chase_target = null            # Suspect       # 轮休中：返回驻地恢复体力
 
 var _path := PackedVector3Array()
 var _seg := 0
@@ -50,6 +54,8 @@ func setup(p_uid: int, p_kind: String, p_fac: Dictionary, p_spot: Vector3, p_gra
 	add_child(_vis.root)
 	# 战术图中单位由 HUD 卡片表示，3D 车辆模型隐藏
 	_vis.root.visible = false
+	patrol_center = facility.center
+	patrol_radius = info.patrol_radius
 	position = Vector3(spot.x, 0.2, spot.z)
 	_yaw = facility.get("yaw", PI)
 	rotation.y = _yaw
@@ -64,7 +70,7 @@ func state_color() -> Color:
 
 
 func is_available() -> bool:
-	return state in [State.IDLE, State.PATROL, State.RETURN, State.MOVE] and fatigue < 92.0
+	return state in [State.IDLE, State.PATROL, State.RETURN, State.MOVE] and fatigue < 92.0 and chase_target == null
 
 
 func force() -> int:
@@ -149,6 +155,7 @@ func dispatch_to(inc: Incident) -> void:
 
 func release(resume_patrol: bool) -> void:
 	incident = null
+	chase_target = null
 	_set_siren(false)
 	if resume_patrol and info.patrol and fatigue < 78.0:
 		start_patrol()
@@ -158,6 +165,7 @@ func release(resume_patrol: bool) -> void:
 
 func return_to_base() -> void:
 	incident = null
+	chase_target = null
 	_set_siren(false)
 	var p := plan(facility.drive, facility.edge)
 	var pts: PackedVector3Array = p.pts
@@ -169,6 +177,7 @@ func return_to_base() -> void:
 
 func start_patrol() -> void:
 	incident = null
+	chase_target = null
 	_set_siren(false)
 	var e := _pick_patrol_edge()
 	var dest := graph.point_on_edge(e, _rng.randf_range(0.3, 0.7))
@@ -176,40 +185,56 @@ func start_patrol() -> void:
 	state = State.PATROL
 
 
+func _plan_point(point: Vector3) -> Dictionary:
+	var near := graph.nearest_edge_point(point)
+	var e: int = near.edge
+	var t := clampf(near.t, 0.05, 0.95)
+	return plan(graph.point_on_edge(e, t), e)
+
+
 func move_to(point: Vector3) -> void:
 	if incident != null:
 		incident.unassign(self)
 		incident = null
+	chase_target = null
 	_set_siren(false)
-	var n := graph.nearest_node(point, true)
-	var best_e := -1
-	var best_d := INF
-	for nb in graph.adj[n]:
-		var e := graph.edge_between(n, nb)
-		var mid := graph.point_on_edge(e, 0.5)
-		var d := mid.distance_to(point)
-		if d < best_d:
-			best_d = d
-			best_e = e
-	var ed: Dictionary = graph.edges[best_e]
-	var a: Vector3 = graph.positions[ed.a]
-	var b: Vector3 = graph.positions[ed.b]
-	var ab := b - a
-	var t := clampf((point - a).dot(ab) / ab.length_squared(), 0.1, 0.9)
-	_follow(plan(a.lerp(b, t), best_e))
+	_follow(_plan_point(point))
 	state = State.MOVE
 
 
+## 追缉：鸣笛前往嫌疑人的位置（或最后出现位置）
+func chase_to(target, point: Vector3) -> void:
+	if incident != null:
+		incident.unassign(self)
+		incident = null
+	chase_target = target
+	var p := _plan_point(point)
+	_follow(p)
+	eta_min = p.len / _speed(true) * Data.MIN_PER_SEC
+	state = State.CHASE
+	_set_siren(true)
+	resting = false
+
+
+## 设定巡区：以某点为中心巡逻
+func set_zone(center: Vector3, radius := 150.0) -> void:
+	patrol_center = Vector3(center.x, 0, center.z)
+	patrol_radius = radius
+	zone_set = true
+	if incident == null and chase_target == null:
+		start_patrol()
+
+
 func _pick_patrol_edge() -> int:
-	var c: Vector3 = facility.center
-	var rad: float = info.patrol_radius
-	for tries in 40:
-		var e := _rng.randi() % graph.edges.size()
-		if not graph.is_inner_edge(e):
+	var cands: Array = []
+	for e in graph.edges.size():
+		if graph.edges[e].len < 8.0:
 			continue
-		if graph.point_on_edge(e, 0.5).distance_to(c) <= rad:
-			return e
-	return facility.edge
+		if graph.point_on_edge(e, 0.5).distance_to(patrol_center) <= patrol_radius:
+			cands.append(e)
+	if cands.is_empty():
+		return graph.nearest_edge_point(patrol_center).edge
+	return cands[_rng.randi() % cands.size()]
 
 
 func _set_siren(on: bool) -> void:
@@ -225,7 +250,7 @@ func _set_siren(on: bool) -> void:
 func tick(dt: float, dm: float) -> bool:
 	var arrived := false
 	if _path.size() >= 2 and _seg < _path.size() - 1:
-		var emergency := state == State.ENROUTE
+		var emergency := state == State.ENROUTE or state == State.CHASE
 		var move := _speed(emergency) * dt
 		var guard := 0
 		while move > 0.0 and _seg < _path.size() - 1 and guard < 64:
@@ -261,7 +286,7 @@ func tick(dt: float, dm: float) -> bool:
 
 	# 疲劳
 	match state:
-		State.ENROUTE, State.ONSCENE:
+		State.ENROUTE, State.ONSCENE, State.CHASE:
 			fatigue = minf(fatigue + dm * 0.22, 100.0)
 		State.IDLE:
 			fatigue = maxf(fatigue - dm * 1.1, 0.0)
@@ -297,6 +322,8 @@ func tick(dt: float, dm: float) -> bool:
 			rotation.y = _yaw
 		elif state == State.PATROL:
 			start_patrol()
+			return false
+		elif state == State.CHASE:
 			return false
 		elif state == State.MOVE:
 			state = State.PATROL if info.patrol else State.IDLE

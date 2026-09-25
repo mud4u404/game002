@@ -25,6 +25,8 @@ var _msg_pill: Button
 var _msg_label: Label
 var _msg_icon: Label
 var _speed_btns: Array = []
+var _layer_btns := {}
+var _patrol_rate: Label
 var _safety: Label
 var _opinion: Label
 var _money: Label
@@ -93,6 +95,7 @@ func setup(p_game: Game) -> void:
 	game.units_changed.connect(func(): if _right_mode == "units": _show_units())
 	game.selection_changed.connect(_on_selection)
 	_update_speed_btns()
+	_update_layer_btns()
 	_set_right("")
 
 
@@ -189,10 +192,58 @@ func _build_bar() -> void:
 		sp.add_child(b)
 		_speed_btns.append([b, s])
 	h.add_child(sp)
+	# 图层：治安热力 / 1-3-5 快反圈 / 天网
+	var ly := HBoxContainer.new()
+	ly.add_theme_constant_override("separation", 0)
+	for it in [["heat", "layers", "治安热力  H"], ["reach", "target", "1-3-5 快反圈"], ["sky", "visibility", "天网监控"]]:
+		var b := UIKit.icon_button(it[1], it[2], 15)
+		b.custom_minimum_size = Vector2(26, 22)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var id: String = it[0]
+		b.pressed.connect(func(): toggle_layer(id))
+		ly.add_child(b)
+		_layer_btns[id] = b
+	h.add_child(ly)
+	_patrol_rate = _pill(h, "visibility", UIKit.CYAN, "见警率：路面警力可见的街区占比，越高发案越少")
 	_safety = _pill(h, "health_and_safety", UIKit.CYAN, "群众安全感")
 	_opinion = _pill(h, "campaign", UIKit.AMBER, "舆情")
 	_money = _pill(h, "payments", UIKit.GREEN, "经费")
 	_staff = _pill(h, "badge", UIKit.TEXT_DIM, "民警编制")
+
+
+func toggle_layer(id: String) -> void:
+	markers.layers[id] = not markers.layers.get(id, false)
+	_update_layer_btns()
+
+
+func _update_layer_btns() -> void:
+	for id in _layer_btns.keys():
+		var b: Button = _layer_btns[id]
+		var on: bool = markers.layers.get(id, false)
+		for state in ["normal", "hover"]:
+			var box := UIKit.button_box(state, "active" if on else "ghost")
+			box.set_corner_radius_all(12)
+			box.content_margin_left = 5
+			box.content_margin_right = 5
+			box.content_margin_top = 2
+			box.content_margin_bottom = 2
+			b.add_theme_stylebox_override(state, box)
+
+
+func toggle_checkpoint() -> void:
+	game.ops.placing = not game.ops.placing
+	if game.ops.placing:
+		var why := game.ops.can_place_checkpoint()
+		if why != "":
+			game.ops.placing = false
+			GameState.advisor.emit(why + "。卡点最多同时 %d 处，每处 %s。" % [Ops.CHECKPOINT_MAX, Data.money_str(Ops.CHECKPOINT_COST)])
+		else:
+			GameState.advisor.emit("点击道路设立临时查控卡点（%s，持续 %d 分钟），右键取消。" % [Data.money_str(Ops.CHECKPOINT_COST), int(Ops.CHECKPOINT_LIFE)])
+	_update_dock()
+
+
+func update_dock() -> void:
+	_update_dock()
 
 
 func _update_speed_btns() -> void:
@@ -289,6 +340,8 @@ func _on_selection(obj) -> void:
 		_ctx_unit(obj)
 	elif obj is Dictionary:
 		_ctx_facility(obj)
+	elif obj is Suspect:
+		_ctx_suspect(obj)
 	_refresh_right()
 
 
@@ -433,7 +486,8 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	_right_body.add_child(tl)
 	var btns := []
 	if u.info.patrol:
-		var pb := UIKit.accent_button("巡逻", UIKit.ACCENT, 13)
+		var pb := UIKit.accent_button("默认巡区", UIKit.ACCENT, 13)
+		pb.tooltip_text = "取消自定巡区，回到驻地周边巡逻。右键路面可划定新巡区"
 		pb.custom_minimum_size.y = 34
 		pb.pressed.connect(func(): game.patrol(u))
 		btns.append(pb)
@@ -446,6 +500,39 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	fb.pressed.connect(func(): game.cam.focus_on(u.global_position, 220))
 	btns.append(fb)
 	_bottom_buttons(btns)
+
+
+func _ctx_suspect(sp: Suspect) -> void:
+	_right.set_title("合成作战", "", "crisis_alert")
+	_hex_header("directions_run", UIKit.RED, "逃逸嫌疑人", "抢劫案 · 天网 + 巡组 + 卡点合成围堵")
+	_tiles([["visibility", "最后发现", "seen"], ["timer", "距离发现", "age"], ["groups", "追缉警力", "chasers"]])
+	var tl := UIKit.label("", 13, UIKit.TEXT_DIM)
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fields["task"] = tl
+	_right_body.add_child(tl)
+	var chase := UIKit.accent_button("派最近警力追缉", UIKit.RED, 13)
+	chase.custom_minimum_size.y = 34
+	chase.pressed.connect(func():
+		var best: PoliceUnit = null
+		var bd := INF
+		for u in game.units:
+			if u.is_available() and u.kind != "swat":
+				var d: float = u.global_position.distance_to(sp.last_seen)
+				if d < bd:
+					bd = d
+					best = u
+		if best:
+			game.ops.order_chase(best, sp)
+		else:
+			GameState.post("指挥中心", "暂无可调派的空闲警力。", "info"))
+	var cp := UIKit.accent_button("设卡", UIKit.ACCENT, 13)
+	cp.custom_minimum_size.y = 34
+	cp.pressed.connect(toggle_checkpoint)
+	var fb := UIKit.button("定位", 13)
+	fb.custom_minimum_size.y = 34
+	fb.pressed.connect(func(): game.cam.focus_on(sp.last_seen, 260))
+	_bottom_buttons([chase, cp, fb])
 
 
 func _ctx_facility(f: Dictionary) -> void:
@@ -489,6 +576,7 @@ func _show_stats() -> void:
 	_right.set_title("值班统计", "第 %d 天" % GameState.day(), "bar_chart")
 	_tiles([["notifications", "接警总数", "total"], ["check_circle", "已结案", "resolved"], ["cancel", "处置失败", "failed"]])
 	_tiles([["timer", "平均到场（分钟）", "avg"], ["sentiment_satisfied", "圆满处置", "perfect"], ["phone_in_talk", "研判准确", "calls"]])
+	_tiles([["visibility", "见警率", "seen_rate"], ["target", "5 分钟到达覆盖", "cover5"], ["front_hand", "抓获 / 逃脱", "caught"]])
 	_refresh_right()
 
 
@@ -509,6 +597,9 @@ func _refresh_right() -> void:
 		_setf("failed", str(st.failed), UIKit.RED if st.failed > 0 else UIKit.TEXT)
 		_setf("avg", UIKit.fmt_min(GameState.avg_response()) if st.resp_n > 0 else "—")
 		_setf("calls", ("%d/%d" % [st.calls_ok, st.calls_total]) if st.calls_total > 0 else "—")
+		_setf("seen_rate", "%d%%" % roundi(game.ops.seen_rate * 100.0))
+		_setf("cover5", "%d%%" % roundi(game.ops.cover5 * 100.0))
+		_setf("caught", "%d/%d" % [int(st.get("caught", 0)), int(st.get("escaped", 0))])
 		return
 	if _right_mode != "select":
 		return
@@ -539,9 +630,30 @@ func _refresh_right() -> void:
 		_setf("force", "%d/4" % u.force())
 		var hp := int(100.0 - u.fatigue)
 		_setf("hp", "%d%%" % hp, UIKit.GREEN if hp > 50 else (UIKit.AMBER if hp > 20 else UIKit.RED))
-		_setf("task", (u.incident.title() + " · " + u.incident.desc()) if u.incident else "暂无任务")
+		var task := "暂无任务"
+		if u.incident:
+			task = u.incident.title() + " · " + u.incident.desc()
+		elif u.chase_target != null:
+			task = "追缉抢劫嫌疑人"
+		elif u.info.patrol:
+			task = ("自定巡区 · " if u.zone_set else "驻地巡区 · ") + "半径 %d 米" % int(u.patrol_radius)
+		_setf("task", task)
 		if _fields.has("art"):
 			_fields["art"].queue_redraw()
+	elif obj is Suspect:
+		var sp: Suspect = obj
+		var live := sp.state == Suspect.S.FLEE
+		_setf("seen", sp.last_seen_by if sp.last_seen_by != "" else "报案地", UIKit.RED if sp.seen else UIKit.TEXT)
+		_setf("age", "实时" if sp.seen else UIKit.fmt_min(sp.seen_age), UIKit.RED if sp.seen else UIKit.TEXT)
+		_setf("chasers", str(game.ops.chasers(sp).size()))
+		var st := "正在逃窜，位置实时掌握" if sp.seen else "脱离视线，按最后位置与逃逸速度推算搜索范围"
+		if sp.state == Suspect.S.CAUGHT:
+			st = "已抓获"
+		elif sp.state == Suspect.S.ESCAPED:
+			st = "已逃脱"
+		_setf("task", st, UIKit.TEXT_DIM if live else (UIKit.GREEN if sp.state == Suspect.S.CAUGHT else UIKit.RED))
+		if _fields.has("hicon"):
+			_fields["hicon"].queue_redraw()
 	elif obj is Dictionary:
 		var n := 0
 		var busy := 0
@@ -564,7 +676,7 @@ func _build_dock() -> void:
 	_dock.add_theme_constant_override("separation", 8)
 	root.add_child(_dock)
 	for it in [["call", "phone_in_talk", "来电"], ["incident", "notifications", "警情"], ["units", "groups", "警力"],
-			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
+			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["checkpoint", "front_hand", "设卡"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
 		var b := _round_button(it[0], it[1], it[2])
 		_dock.add_child(b)
 		_dock_btns[it[0]] = b
@@ -600,7 +712,7 @@ func _round_button(id: String, icon_name: String, text: String) -> Control:
 		c.draw_circle(ctr, 17, fill)
 		c.draw_arc(ctr, 17, 0, TAU, 40, ring, 1.5, true)
 		UIKit.draw_icon(c, icon_name, ctr, 18, Color.WHITE if (on or hv or alert) else UIKit.TEXT_DIM)
-		UIKit.draw_text_c(c, text, Vector2(23, 46), 10, UIKit.TEXT if (on or hv) else UIKit.TEXT_DIM, "reg")
+		UIKit.draw_text_c(c, text, Vector2(23, 46), 10, UIKit.TEXT if (on or hv) else UIKit.TEXT_DIM, "reg", 4)
 		if badge > 0:
 			var bc := ctr + Vector2(13, -13)
 			c.draw_circle(bc, 7.5, UIKit.RED if id == "call" else UIKit.AMBER)
@@ -649,6 +761,9 @@ func _on_dock(id: String) -> void:
 			else:
 				game.select(null)
 				_show_stats()
+		"checkpoint":
+			toggle_checkpoint()
+			return
 		"auto":
 			GameState.auto_dispatch = not GameState.auto_dispatch
 			GameState.post("指挥中心", "自动派警已" + ("开启。" if GameState.auto_dispatch else "关闭，所有警情需手动调度。"), "sys")
@@ -660,7 +775,7 @@ func _update_dock() -> void:
 		return
 	var on := {"units": _right_mode == "units", "stats": _right_mode == "stats", "recruit": recruit_panel != null and recruit_panel.visible,
 		"auto": GameState.auto_dispatch, "facility": _right_mode == "select" and game.selected is Dictionary,
-		"incident": _right_mode == "select" and game.selected is Incident}
+		"incident": _right_mode == "select" and game.selected is Incident, "checkpoint": game.ops != null and game.ops.placing}
 	for id in _dock_btns.keys():
 		_dock_btns[id].set_meta("on", on.get(id, false))
 
@@ -842,6 +957,8 @@ func _process(delta: float) -> void:
 				calls += 1
 	_dock_btns["call"].set_meta("badge", calls)
 	_dock_btns["incident"].set_meta("badge", active - calls)
+	_dock_btns["checkpoint"].set_meta("badge", game.ops.checkpoints.size())
+	_patrol_rate.text = "见警率 %d%%" % roundi(game.ops.seen_rate * 100.0)
 	_refresh_right()
 
 

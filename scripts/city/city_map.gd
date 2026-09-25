@@ -77,6 +77,10 @@ func build(seed_value: int) -> void:
 	_lap("trees", t)
 	_build_3d()
 	_lap("3d", t)
+	if DisplayServer.get_name() == "headless":
+		# 无渲染环境（自动化模拟）：跳过贴图绘制
+		ready_to_show.emit()
+		return
 	await _paint_ground()
 	_lap("paint", t)
 	await _paint_lightmap()
@@ -1121,24 +1125,29 @@ func random_incident_spot(r: RandomNumberGenerator) -> Dictionary:
 	for attempt in 80:
 		var e := r.randi() % graph.edges.size()
 		var ed: Dictionary = graph.edges[e]
-		var a: Vector3 = graph.positions[ed.a]
-		var b: Vector3 = graph.positions[ed.b]
-		var mid := (a + b) * 0.5
+		var mid: Vector3 = (graph.positions[ed.a] + graph.positions[ed.b]) * 0.5
 		if not play_rect.grow(-20).has_point(Vector2(mid.x, mid.z)):
 			continue
 		if ed.len < 12.0:
 			continue
 		if Geometry2D.is_point_in_polygon(Vector2(mid.x, mid.z), river_poly):
 			continue
-		var t := r.randf_range(0.2, 0.8)
-		var dir := (b - a).normalized()
-		var right := Vector3(-dir.z, 0, dir.x)
-		var side := 1.0 if r.randf() < 0.5 else -1.0
-		var road_p := a.lerp(b, t)
-		var w: float = ed.width
-		return {"edge": e, "t": t, "road_center": road_p, "road": road_p + right * side * RoadGraph.LANE_OFFSET,
-			"pos": road_p + right * side * (w * 0.5 + 1.5), "desc": graph.describe(e, t)}
+		return spot_on_edge(e, r)
 	return {}
+
+
+func spot_on_edge(e: int, r: RandomNumberGenerator) -> Dictionary:
+	var ed: Dictionary = graph.edges[e]
+	var a: Vector3 = graph.positions[ed.a]
+	var b: Vector3 = graph.positions[ed.b]
+	var t := r.randf_range(0.2, 0.8)
+	var dir := (b - a).normalized()
+	var right := Vector3(-dir.z, 0, dir.x)
+	var side := 1.0 if r.randf() < 0.5 else -1.0
+	var road_p := a.lerp(b, t)
+	var w: float = ed.width
+	return {"edge": e, "t": t, "road_center": road_p, "road": road_p + right * side * RoadGraph.LANE_OFFSET,
+		"pos": road_p + right * side * (w * 0.5 + 1.5), "desc": graph.describe(e, t)}
 
 
 ## 地图上用于标注的道路名：辖区内每段足够长的路段各标一次

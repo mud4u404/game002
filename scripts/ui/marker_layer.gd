@@ -8,6 +8,7 @@ const UNIT_FILL := {"community": Color("3b8cff"), "patrol": Color("2f6ff0"), "tr
 
 var game: Game
 var hover = null
+var layers := {"heat": false, "reach": false, "sky": false}
 var _labels: Array = []
 
 
@@ -32,7 +33,15 @@ func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var zoom: float = game.cam.dist
 	var vr := get_viewport_rect()
+	var ops: Ops = game.ops
+	if layers.heat:
+		_heat(ops)
+	if layers.reach:
+		_reach(ops)
 	_road_labels(zoom, vr)
+	_zones(t)
+	_cameras(ops, t, zoom, layers.sky or _any_suspect(ops))
+	_checkpoints(ops, t)
 
 	# 设施：地面波纹 + 六边形
 	for f in game.city.facilities:
@@ -54,22 +63,26 @@ func _draw() -> void:
 
 	# 出警路线
 	for u in game.units:
-		var show_route: bool = u.state == PoliceUnit.State.ENROUTE or (UIKit.same(game.selected, u) and u.state in [PoliceUnit.State.PATROL, PoliceUnit.State.RETURN, PoliceUnit.State.MOVE])
+		var show_route: bool = u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.CHASE or (UIKit.same(game.selected, u) and u.state in [PoliceUnit.State.PATROL, PoliceUnit.State.RETURN, PoliceUnit.State.MOVE])
 		if not show_route:
 			continue
 		var pts: PackedVector3Array = u.remaining_points()
 		var sp := PackedVector2Array()
 		for w in pts:
 			sp.append(_p(w))
-		_route(sp, t, u.state == PoliceUnit.State.ENROUTE)
+		_route(sp, t, u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.CHASE)
 
 	for inc in game.incidents:
 		_draw_incident(inc, t, zoom, vr)
+	for sp in ops.suspects:
+		_draw_suspect(sp, t, vr)
 	# 单位按屏幕 y 排序，下方的卡片绘制在上层
 	var order := game.units.duplicate()
 	order.sort_custom(func(a, b): return _p(a.global_position).y < _p(b.global_position).y)
 	for u in order:
 		_draw_unit(u, t, zoom, vr)
+	if ops.placing:
+		_placing_cursor(t)
 
 
 # ------------------------------------------------------------------ 警情：六边形
@@ -131,7 +144,7 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 	var sel: bool = UIKit.same(game.selected, u)
 	var hv: bool = UIKit.same(hover, u)
 	var idle := u.state == PoliceUnit.State.IDLE
-	var emergency := u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.ONSCENE
+	var emergency := u.state in [PoliceUnit.State.ENROUTE, PoliceUnit.State.ONSCENE, PoliceUnit.State.CHASE]
 	var scale := clampf(420.0 / zoom, 0.8, 1.15) * (1.12 if sel or hv else 1.0)
 	var cw := 40.0 * scale
 	var ch := 25.0 * scale
@@ -152,7 +165,7 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 		border = Color.WHITE
 	elif u.state == PoliceUnit.State.ONSCENE:
 		border = UIKit.GREEN
-	elif u.state == PoliceUnit.State.ENROUTE:
+	elif u.state == PoliceUnit.State.ENROUTE or u.state == PoliceUnit.State.CHASE:
 		border = Color("ff4a5a") if fmod(t * 3.2, 1.0) < 0.5 else Color("5aa0ff")
 	if emergency:
 		UIKit.draw_round_rect(self, card.grow(3), Color(border.r, border.g, border.b, 0.25), 5)
@@ -168,6 +181,236 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 		draw_circle(Vector2(p.x + dx, card.position.y - 5.0 * scale), 2.0 * scale, Color(0.85, 0.94, 1.0))
 	if sel or hv or zoom < 300.0:
 		_pill(u.callsign, Vector2(p.x, card.position.y - 18 * scale), Color.WHITE, 11)
+
+
+# ------------------------------------------------------------------ 中国警务图层
+func _any_suspect(ops: Ops) -> bool:
+	for sp in ops.suspects:
+		if sp.state == Suspect.S.FLEE:
+			return true
+	return false
+
+
+## 世界半径 → 屏幕半径
+func _sr(w: Vector3, r: float) -> float:
+	return _p(w + Vector3(r, 0, 0)).distance_to(_p(w))
+
+
+## 治安热力：风险网格生成小纹理，双线性放大成柔和热区（琥珀 → 红）
+var _heat_img: Image
+var _heat_tex: ImageTexture
+var _heat_t := 0.0
+
+
+func _heat(ops: Ops) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if _heat_tex == null or now - _heat_t > 0.5:
+		_heat_t = now
+		var S := 4  # 每格细分，平滑边缘
+		var w := ops.cols * S
+		var h := ops.rows * S
+		if _heat_img == null:
+			_heat_img = Image.create(w, h, false, Image.FORMAT_RGBA8)
+		var mx := maxf(ops.risk_max(), 0.001)
+		for y in h:
+			for x in w:
+				# 在网格中心之间双线性插值
+				var gx := clampf((x + 0.5) / S - 0.5, 0.0, ops.cols - 1.0)
+				var gy := clampf((y + 0.5) / S - 0.5, 0.0, ops.rows - 1.0)
+				var x0 := int(gx)
+				var y0 := int(gy)
+				var x1 := mini(x0 + 1, ops.cols - 1)
+				var y1 := mini(y0 + 1, ops.rows - 1)
+				var fx := gx - x0
+				var fy := gy - y0
+				var r := lerpf(lerpf(ops.risk[y0 * ops.cols + x0], ops.risk[y0 * ops.cols + x1], fx),
+					lerpf(ops.risk[y1 * ops.cols + x0], ops.risk[y1 * ops.cols + x1], fx), fy)
+				var k := clampf(r / mx, 0.0, 1.0)
+				k = clampf((k - 0.2) / 0.8, 0.0, 1.0)
+				var col := Color("f0a020").lerp(Color("ff2d4a"), clampf(k * 1.4 - 0.3, 0.0, 1.0))
+				col.a = pow(k, 1.3) * 0.62
+				_heat_img.set_pixel(x, y, col)
+		if _heat_tex == null:
+			_heat_tex = ImageTexture.create_from_image(_heat_img)
+		else:
+			_heat_tex.update(_heat_img)
+	var P := game.city.play_rect
+	var o := _p(Vector3(P.position.x, 0, P.position.y))
+	var ex := _p(Vector3(P.end.x, 0, P.position.y))
+	var ey := _p(Vector3(P.position.x, 0, P.end.y))
+	var sz := Vector2(ops.cols * Ops.CELL, ops.rows * Ops.CELL)
+	var xf := Transform2D((ex - o) / P.size.x * sz.x / sz.x, (ey - o) / P.size.y, o)
+	draw_set_transform_matrix(xf)
+	draw_texture_rect(_heat_tex, Rect2(Vector2.ZERO, sz), false)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	# 见警：路面警力可见范围（青色细点阵）
+	for i in ops.presence.size():
+		var pr: float = ops.presence[i]
+		if pr < 0.25 or ops.base[i] <= 0.0:
+			continue
+		var c2 := ops.cell_center(i)
+		draw_circle(_p(Vector3(c2.x, 0, c2.y)), 1.5 + minf(pr, 1.5) * 1.2, Color(0.25, 0.95, 0.8, 0.5))
+
+
+## 1-3-5 快反圈：路网按最快到达时间着色，超出 5 分钟为盲区
+func _reach(ops: Ops) -> void:
+	var g := game.city.graph
+	var cols := [Color(0.2, 1.0, 0.75, 0.95), Color(0.25, 0.75, 1.0, 0.8), Color(0.55, 0.5, 1.0, 0.6), Color(1.0, 0.24, 0.3, 0.75)]
+	var P := game.city.play_rect
+	for ed in g.edges:
+		var a: Vector3 = g.positions[ed.a]
+		var b: Vector3 = g.positions[ed.b]
+		if not P.has_point(Vector2((a.x + b.x) * 0.5, (a.z + b.z) * 0.5)):
+			continue
+		var ta: float = ops.node_eta[ed.a]
+		var tb: float = ops.node_eta[ed.b]
+		# 分两半着色，让等时线落在路段中间
+		var m := (a + b) * 0.5
+		for half in [[a, m, ta], [m, b, tb]]:
+			var t: float = half[2]
+			var ci := 3
+			for k in 3:
+				if t <= Ops.REACH_MINUTES[k]:
+					ci = k
+					break
+			var col: Color = cols[ci]
+			draw_line(_p(half[0]), _p(half[1]), UIKit.with_alpha(col, col.a * 0.25), 7.0, true)
+			draw_line(_p(half[0]), _p(half[1]), col, 2.2, true)
+	# 图例
+	var vr := get_viewport_rect()
+	var o := Vector2(vr.size.x * 0.5 - 150, vr.size.y - 96)
+	var names := ["1 分钟", "3 分钟", "5 分钟", "盲区"]
+	UIKit.draw_round_rect(self, Rect2(o - Vector2(10, 12), Vector2(320, 24)), Color(0.02, 0.06, 0.16, 0.85), 12, Color(0.3, 0.6, 1.0, 0.5), 1)
+	for k in 4:
+		var x := o.x + k * 78.0
+		draw_line(Vector2(x, o.y), Vector2(x + 16, o.y), cols[k], 3.0, true)
+		draw_string(UIKit.font("bold"), Vector2(x + 22, o.y + 4), names[k], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UIKit.TEXT)
+
+
+## 巡区：选中单位或开启快反圈图层时显示
+func _zones(t: float) -> void:
+	for u in game.units:
+		if not u.info.patrol:
+			continue
+		var sel: bool = UIKit.same(game.selected, u)
+		if not sel and not (u.zone_set and (layers.reach or layers.heat)):
+			continue
+		var c := _p(u.patrol_center)
+		var r := _sr(u.patrol_center, u.patrol_radius)
+		var col := Color(0.3, 0.75, 1.0)
+		draw_circle(c, r, Color(col.r, col.g, col.b, 0.06 if sel else 0.035))
+		var n := 72
+		for k in n:
+			if k % 3 != 2:
+				draw_arc(c, r, TAU * k / n + t * 0.05, TAU * (k + 1) / n + t * 0.05, 3, Color(col.r, col.g, col.b, 0.75 if sel else 0.4), 1.4, true)
+		draw_circle(c, 3.0, Color(col.r, col.g, col.b, 0.8))
+		if sel:
+			_pill("巡区 · %s" % u.callsign, c + Vector2(0, -r - 10), UIKit.CYAN, 11)
+
+
+## 天网摄像头：路口小六边形；开启图层或有追逃时显示视域与扫描扇面
+func _cameras(ops: Ops, t: float, zoom: float, full: bool) -> void:
+	for cam in ops.cameras:
+		var p := _p(cam.pos)
+		if full:
+			var r := _sr(cam.pos, Ops.CAM_RANGE)
+			draw_circle(p, r, Color(0.3, 0.8, 1.0, 0.04))
+			draw_arc(p, r, 0, TAU, 48, Color(0.3, 0.8, 1.0, 0.3), 1.0, true)
+			var sweep := fmod(t * 0.6 + float(cam.node) * 0.37, 1.0) * TAU
+			var fan := PackedVector2Array([p])
+			for k in 9:
+				var a := sweep + (k - 4) * 0.09
+				fan.append(p + Vector2(cos(a), sin(a)) * r)
+			draw_colored_polygon(fan, Color(0.3, 0.8, 1.0, 0.1))
+		UIKit.draw_hex(self, p, 8.5, Color("0d2a66"), Color(0.45, 0.8, 1.0, 0.9 if full else 0.55), 1.2)
+		UIKit.draw_icon(self, "videocam", p, 10, Color(0.75, 0.9, 1.0, 1.0 if full else 0.6))
+		if full and zoom < 320.0:
+			_pill(cam.name, p + Vector2(0, 18), UIKit.TEXT_DIM, 10)
+
+
+func _checkpoints(ops: Ops, t: float) -> void:
+	for cp in ops.checkpoints:
+		var p := _p(cp.pos)
+		var r := _sr(cp.pos, Ops.CHECKPOINT_RANGE + 4.0)
+		var blink := fmod(t * 2.0, 1.0) < 0.5
+		draw_circle(p, r, Color(1.0, 0.24, 0.3, 0.12))
+		draw_arc(p, r, 0, TAU, 32, Color(1.0, 0.35, 0.4, 0.7), 1.5, true)
+		# 路障条纹
+		var bar := Rect2(p - Vector2(15, 4), Vector2(30, 8))
+		UIKit.draw_round_rect(self, bar, Color.WHITE, 2)
+		for k in 3:
+			var x := bar.position.x + 3 + k * 9
+			draw_colored_polygon(PackedVector2Array([Vector2(x, bar.end.y), Vector2(x + 4, bar.position.y), Vector2(x + 8, bar.position.y), Vector2(x + 4, bar.end.y)]), UIKit.RED)
+		draw_circle(p + Vector2(-17, 0), 2.5, UIKit.RED if blink else Color("3f7bff"))
+		draw_circle(p + Vector2(17, 0), 2.5, Color("3f7bff") if blink else UIKit.RED)
+		_pill("卡点 %d′" % ceili(cp.life), p + Vector2(0, -16), Color.WHITE, 10)
+
+
+## 嫌疑人：可见时为红色目标卡；失去视线后显示最后位置 + 逐渐扩大的推算搜索圈
+func _draw_suspect(sp: Suspect, t: float, vr: Rect2) -> void:
+	var sel: bool = UIKit.same(game.selected, sp)
+	var hv: bool = UIKit.same(hover, sp)
+	if sp.state != Suspect.S.FLEE:
+		var a := clampf(1.0 - sp.fade / 6.0, 0.0, 1.0)
+		var p0 := _p(sp.pos)
+		var col := UIKit.GREEN if sp.state == Suspect.S.CAUGHT else UIKit.TEXT_MUTED
+		UIKit.draw_hex(self, p0, 14, UIKit.with_alpha(col.darkened(0.3), a), UIKit.with_alpha(Color.WHITE, a), 1.5)
+		UIKit.draw_icon(self, "check_circle" if sp.state == Suspect.S.CAUGHT else "directions_run", p0, 16, UIKit.with_alpha(Color.WHITE, a))
+		_pill("已抓获" if sp.state == Suspect.S.CAUGHT else "已逃脱", p0 + Vector2(0, 24), UIKit.with_alpha(col, a), 11)
+		return
+	if sp.seen:
+		var p := _p(sp.pos)
+		if not vr.grow(-24).has_point(p):
+			_offscreen(p, UIKit.RED, "directions_run", vr)
+			return
+		# 锁定框
+		var R := 18.0 + (2.0 if sel or hv else 0.0)
+		var ph := fmod(t * 1.6, 1.0)
+		draw_arc(p, R + 6 + ph * 16.0, 0, TAU, 40, UIKit.with_alpha(UIKit.RED, 0.7 * (1.0 - ph)), 2.0, true)
+		for k in 4:
+			var a := k * PI * 0.5 + PI * 0.25
+			var d := Vector2(cos(a), sin(a))
+			var c := p + d * (R + 4)
+			draw_line(c, c - d * 7 + d.orthogonal() * 7, Color.WHITE, 2.0, true)
+			draw_line(c, c - d * 7 - d.orthogonal() * 7, Color.WHITE, 2.0, true)
+		# 逃窜方向
+		var hd := _p(sp.pos + sp.heading() * 30.0) - p
+		if hd.length() > 1.0:
+			var dir := hd.normalized()
+			var tip := p + dir * (R + 16)
+			draw_colored_polygon(PackedVector2Array([tip, tip - dir * 9 + dir.orthogonal() * 5, tip - dir * 9 - dir.orthogonal() * 5]), UIKit.RED)
+		UIKit.draw_hex(self, p, R, UIKit.RED.darkened(0.1), Color.WHITE if (sel or hv) else UIKit.RED.lightened(0.4), 2.0)
+		UIKit.draw_icon(self, "directions_run", p, int(R * 1.1), Color.WHITE)
+		_pill("嫌疑人 · %s" % sp.last_seen_by, p + Vector2(0, R + 16), UIKit.RED, 11)
+	else:
+		var p := _p(sp.last_seen)
+		if not vr.grow(-24).has_point(p):
+			_offscreen(p, UIKit.AMBER, "directions_run", vr)
+			return
+		var rw := minf(sp.seen_age * sp.speed / Data.MIN_PER_SEC * 0.8, 380.0)
+		var rr := maxf(_sr(sp.last_seen, rw), 14.0)
+		draw_circle(p, rr, Color(1.0, 0.55, 0.15, 0.07))
+		var n := 60
+		for k in n:
+			if k % 2 == 0:
+				draw_arc(p, rr, TAU * k / n - t * 0.15, TAU * (k + 1) / n - t * 0.15, 3, Color(1.0, 0.6, 0.2, 0.65), 1.5, true)
+		UIKit.draw_hex(self, p, 14, Color(0.35, 0.18, 0.05, 0.9), Color.WHITE if (sel or hv) else UIKit.AMBER, 2.0)
+		UIKit.draw_text_c(self, "?", p, 16, Color.WHITE)
+		_pill("最后发现 %s" % UIKit.fmt_min(sp.seen_age), p + Vector2(0, 30), UIKit.AMBER, 11)
+
+
+func _placing_cursor(t: float) -> void:
+	var m := get_viewport().get_mouse_position()
+	var g := game.cam.ground_point(m)
+	var near := game.city.graph.nearest_edge_point(g)
+	var ok: bool = near.d <= 30.0
+	var w := game.city.graph.point_on_edge(near.edge, near.t) if ok else g
+	var p := _p(w)
+	var col := UIKit.CYAN if ok else UIKit.RED
+	var r := _sr(w, Ops.CHECKPOINT_RANGE + 4.0)
+	draw_arc(p, r + fmod(t * 20.0, 6.0), 0, TAU, 32, col, 2.0, true)
+	UIKit.draw_icon(self, "front_hand", p, 18, col)
+	_pill("设卡 %s" % Data.money_str(Ops.CHECKPOINT_COST) if ok else "请点在道路上", p + Vector2(0, -r - 14), col, 11)
 
 
 # ------------------------------------------------------------------ 工具
