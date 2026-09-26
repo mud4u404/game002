@@ -268,6 +268,11 @@ func toggle_checkpoint() -> void:
 	_update_dock()
 
 
+## 玩家是否正在浏览警力 / 统计 / 招募面板（新警情不应抢走右侧面板）
+func is_browsing() -> bool:
+	return _right_mode in ["units", "stats"] or recruit_panel.visible
+
+
 func update_dock() -> void:
 	_update_dock()
 
