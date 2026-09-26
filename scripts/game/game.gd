@@ -104,7 +104,14 @@ func start_shift() -> void:
 	var zones := units.filter(func(u): return u.zone_set).size()
 	GameState.post("指挥中心", "部署完毕：%d 组警力上路巡逻，%d 组驻地待命。开始值班！" % [zones, units.size() - zones], "sys")
 	hud.enter_shift()
-	_tut_once("shift", "开始值班。来了警情先看它需要什么专长，再从右侧名单里点人派出去。派错警种只能维持现场，处置不了。")
+	# 缺少某个专长的警种：提醒该类警情将无人能处置
+	var lacking := []
+	for k in Data.SKILLS.keys():
+		if not units.any(func(u): return u.skill() == k):
+			lacking.append("%s（%s）" % [Data.SKILLS[k].name, Data.UNIT_TYPES[Data.SKILLS[k].unit].short])
+	if not lacking.is_empty():
+		GameState.post("值班长", "注意：没有%s警力，这类警情将无人能处置。" % "、".join(lacking), "lv3")
+	_tut_once("shift", "开始值班。系统会按就近、警种对口自动派警；来电要你亲自研判定性。对口警力不够时，警情会亮红，需要你调度或组建。")
 
 
 func _dev_hooks() -> void:
@@ -608,13 +615,13 @@ func cancel_call() -> void:
 
 # ------------------------------------------------------------------ 派警
 func _auto_dispatch() -> void:
-	var bot := DevTools.args.has("bot")   # 自动化测试：模拟玩家派所有警情
-	if not GameState.auto_dispatch and not bot:
+	if not GameState.auto_dispatch and not DevTools.args.has("bot"):
 		return
-	# 自动派警只接管一般（1 级）警情，重要警情始终由指挥长决策
-	for inc in incidents:
-		if not (inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE]) or (inc.level() > 1 and not bot):
-			continue
+	# 派警原则：就近、警种匹配、自动。按缺口专长派到场最快的对口警力，
+	# 等级高的警情优先；没有对口警力时不乱派，留给指挥长决断。来电需先研判定性。
+	var list := incidents.filter(func(i): return i.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE])
+	list.sort_custom(func(a, b): return a.level() > b.level())
+	for inc in list:
 		var miss: Dictionary = inc.missing()
 		for k in miss.keys():
 			var u := best_unit(inc, "" if k == "any" else k)
@@ -667,7 +674,7 @@ func assign(u: PoliceUnit, inc: Incident, manual: bool) -> void:
 	GameState.post("指挥中心", "%s，%s发生%s，请立即前往处置。" % [u.callsign, inc.desc(), inc.title()], "cmd")
 	GameState.post(u.callsign, "收到，预计 %d 分钟到达。" % ceili(eta), "unit")
 	if manual:
-		_tut_once("manual", "手动调度成功。系统会继续为其他警情自动补派警力。")
+		_tut_once("manual", "手动派警成功。系统会继续按就近、对口的原则为其他警情自动补派。")
 	inc.refresh_marker()
 	incident_updated.emit(inc)
 	units_changed.emit()
@@ -855,7 +862,7 @@ func _tutorial_tick(delta: float) -> void:
 	_advisor_t += delta
 	for inc in incidents:
 		if inc.state == Incident.S.WAITING:
-			_tut_once("first_inc", "来警情了！右侧面板写着它需要的专长，下面是可派警力名单，对口的排在前面，点一下就派出。")
+			_tut_once("first_inc", "来警情了！系统已按就近、对口自动派警。右侧面板能看到专长是否到位，想增派或改派，点名单里的警力即可。")
 			break
 	for inc in incidents:
 		if inc.state == Incident.S.CALL:

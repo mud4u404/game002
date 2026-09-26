@@ -916,7 +916,7 @@ func _build_dock() -> void:
 	_dock.add_theme_constant_override("separation", 8)
 	root.add_child(_dock)
 	for it in [["call", "phone_in_talk", "来电"], ["incident", "notifications", "警情"], ["units", "groups", "警力"],
-			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["checkpoint", "front_hand", "设卡"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派一般"]]:
+			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["checkpoint", "front_hand", "设卡"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
 		var b := _round_button(it[0], it[1], it[2])
 		_dock.add_child(b)
 		_dock_btns[it[0]] = b
@@ -1006,7 +1006,7 @@ func _on_dock(id: String) -> void:
 			return
 		"auto":
 			GameState.auto_dispatch = not GameState.auto_dispatch
-			GameState.post("指挥中心", "一般（1 级）警情自动派警已" + ("开启，重要警情仍由你决策。" if GameState.auto_dispatch else "关闭，所有警情由你调度。"), "sys")
+			GameState.post("指挥中心", "自动派警已" + ("开启：就近、警种对口派警。" if GameState.auto_dispatch else "关闭，所有警情由你调度。"), "sys")
 	_update_dock()
 
 
