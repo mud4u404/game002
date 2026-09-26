@@ -393,6 +393,9 @@ func spawn_incident(force_type := "", guided := false) -> Incident:
 func _focus_new(inc: Incident) -> void:
 	if hud == null or hud.call_panel.visible or answering != null:
 		return
+	# 玩家正在看警力列表、统计或招募面板时不抢焦点，新警情仍会出现在左侧警情栏
+	if hud.is_browsing():
+		return
 	if inc.state == Incident.S.CALL:
 		return
 	var busy: bool = selected is Incident and selected.is_active() and selected.state in [Incident.S.CALL, Incident.S.WAITING]
