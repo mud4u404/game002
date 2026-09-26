@@ -203,7 +203,8 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 		for k in 2:
 			var w := fmod(ph * 2.0 + k * 0.5, 1.0)
 			draw_arc(p, 12.0 + w * 34.0, 0, TAU, 40, UIKit.with_alpha(UIKit.AMBER, 0.75 * (1.0 - w)), 2.2, true)
-		_pill("晋升 Lv.%d" % u.level, Vector2(p.x, card.position.y - 30.0 * scale), UIKit.AMBER, 11)
+		# 上移避开呼号胶囊（呼号在 -18*scale，胶囊高约 19，留出间距）
+		_pill("晋升 Lv.%d" % u.level, Vector2(p.x, card.position.y - 50.0 * scale), UIKit.AMBER, 11)
 	# 等级角标：Lv.1 保持地图干净
 	if u.level >= 2:
 		var br := 7.0 * scale

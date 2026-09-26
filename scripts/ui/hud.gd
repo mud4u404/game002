@@ -576,19 +576,36 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_body.add_child(t2)
 	# 等级徽章 + 经验条 + 效率小字（动态，挂 _refresh_right）
+	# 胶囊徽章：参考日报 _build_verdict —— 圆角全满 + 底色 20% + 亮边
 	var lvh := HBoxContainer.new()
-	lvh.add_theme_constant_override("separation", 8)
-	var badge := UIKit.tag("Lv.%d" % u.level, UIKit.ACCENT, 12)
-	_fields["lv_badge"] = badge
+	lvh.add_theme_constant_override("separation", 10)
+	lvh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var badge := PanelContainer.new()
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = UIKit.with_alpha(UIKit.ACCENT, 0.22)
+	bsb.border_color = UIKit.ACCENT.lightened(0.35)
+	bsb.set_border_width_all(2)
+	bsb.set_corner_radius_all(14)
+	bsb.content_margin_left = 12
+	bsb.content_margin_right = 12
+	bsb.content_margin_top = 3
+	bsb.content_margin_bottom = 3
+	badge.add_theme_stylebox_override("panel", bsb)
+	var bl := UIKit.label("Lv.%d" % u.level, 13, Color.WHITE, "bold")
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.add_child(bl)
+	_fields["lv_badge"] = bl
 	lvh.add_child(badge)
-	var xpbar := MeterBar.new(UIKit.ACCENT, 6, 12)
+	var xpbar := MeterBar.new(UIKit.ACCENT, 8, 12)
 	xpbar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	xpbar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_fields["xp_bar"] = xpbar
 	lvh.add_child(xpbar)
-	var xpt := UIKit.label("", 12, UIKit.TEXT_DIM)
-	xpt.custom_minimum_size = Vector2(64, 0)
+	var xpt := UIKit.label("", 12, UIKit.TEXT, "bold")
+	xpt.custom_minimum_size = Vector2(72, 0)
 	xpt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	xpt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_fields["xp_txt"] = xpt
 	lvh.add_child(xpt)
 	_right_body.add_child(lvh)
