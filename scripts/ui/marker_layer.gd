@@ -196,6 +196,25 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 	for k in n:
 		var dx := (k - (n - 1) * 0.5) * 6.0 * scale
 		draw_circle(Vector2(p.x + dx, card.position.y - 5.0 * scale), 2.0 * scale, Color(0.85, 0.94, 1.0))
+	# 晋升：3 秒金色光环 + 胶囊
+	var lu := t - u.level_up_at
+	if lu >= 0.0 and lu < 3.0:
+		var ph := lu / 3.0
+		for k in 2:
+			var w := fmod(ph * 2.0 + k * 0.5, 1.0)
+			draw_arc(p, 12.0 + w * 34.0, 0, TAU, 40, UIKit.with_alpha(UIKit.AMBER, 0.75 * (1.0 - w)), 2.2, true)
+		# 上移避开呼号胶囊（呼号在 -18*scale，胶囊高约 19，留出间距）
+		_pill("晋升 Lv.%d" % u.level, Vector2(p.x, card.position.y - 50.0 * scale), UIKit.AMBER, 11)
+	# 等级角标：Lv.1 保持地图干净
+	if u.level >= 2:
+		var br := 7.0 * scale
+		var bp := Vector2(card.end.x - br - 2.0, card.position.y + br + 2.0)
+		draw_circle(bp, br, UIKit.AMBER)
+		draw_arc(bp, br, 0, TAU, 20, Color.WHITE, 1.0, true)
+		var fs := int(maxf(9.0, 10.0 * scale))
+		var ltxt := str(u.level)
+		var lsz := UIKit.font("bold").get_string_size(ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		draw_string(UIKit.font("bold"), bp + Vector2(-lsz.x * 0.5, fs * 0.36), ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 	if sel or hv or zoom < 300.0:
 		_pill(u.callsign, Vector2(p.x, card.position.y - 18 * scale), Color.WHITE, 11)
 
