@@ -10,12 +10,14 @@ signal selection_changed(obj)
 signal units_changed
 
 const SEED := 20260924
+## 交接班时移交的基础警力（其余由玩家在班前部署中组建）
 const INITIAL_UNITS := {
-	"station": {"community": 2},
-	"patrol_hq": {"patrol": 4},
-	"traffic_hq": {"traffic": 3},
-	"swat_hq": {"swat": 1},
+	"station": {"community": 1},
+	"patrol_hq": {"patrol": 2},
+	"traffic_hq": {"traffic": 1},
 }
+## 开班后的引导警情：依次体验交管 / 调解 / 处突三种专长
+const OPENING := [[6.0, "traffic_minor"], [34.0, "dispute"], [64.0, "fight"]]
 
 var city: CityMap
 var env: EnvironmentRig
@@ -39,6 +41,9 @@ var _advisor_t := 0.0
 var _finished: Array = []   # [Incident, remove_at_real_time]
 var _time := 0.0
 var _started := false
+var phase := "setup"          # setup 班前部署 → shift 值班中
+var _shift_t := 0.0
+var _opening: Array = []
 
 
 func _ready() -> void:
@@ -72,9 +77,34 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	env.apply(GameState.time_of_day())
-	GameState.post("指挥中心", "晚高峰前交接完毕，江城市公安局滨江分局指挥中心开始值守。", "sys")
+	GameState.post("指挥中心", "交接班：请指挥长完成班前部署——组建警力、划定巡区。", "sys")
 	_started = true
+	hud.enter_setup()
+	if DevTools.args.has("bot"):
+		for kind in ["swat", "patrol", "community", "traffic"]:
+			recruit(kind)
+		for u in units:
+			if u.info.patrol:
+				u.set_zone(u.facility.center, ZONE_RADIUS.get(u.kind, 150.0) * 1.6, false)
+	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
+		start_shift()
 	_dev_hooks()
+
+
+## 班前部署结束，开始值班
+func start_shift() -> void:
+	if phase != "setup":
+		return
+	phase = "shift"
+	_shift_t = 0.0
+	_opening = OPENING.duplicate(true)
+	for u in units:
+		if u.zone_set and u.incident == null:
+			u.start_patrol()
+	var zones := units.filter(func(u): return u.zone_set).size()
+	GameState.post("指挥中心", "部署完毕：%d 组警力上路巡逻，%d 组驻地待命。开始值班！" % [zones, units.size() - zones], "sys")
+	hud.enter_shift()
+	_tut_once("shift", "开始值班。来了警情先看它需要什么专长，再从右侧名单里点人派出去。派错警种只能维持现场，处置不了。")
 
 
 func _dev_hooks() -> void:
@@ -139,8 +169,6 @@ func _spawn_unit(kind: String, fac: Dictionary) -> PoliceUnit:
 	u.setup(_next_uid, kind, fac, fac.spots[used], city.graph, n)
 	_next_uid += 1
 	units.append(u)
-	if u.info.patrol:
-		u.start_patrol()
 	units_changed.emit()
 	return u
 
@@ -184,6 +212,7 @@ func recruit(kind: String) -> PoliceUnit:
 	for f in facilities_of(kind):
 		var u := _spawn_unit(kind, f)
 		if u:
+			u.bought_in_setup = phase == "setup"
 			GameState.spend(d.cost)
 			GameState.staff_used = _staff_count()
 			GameState.post(f.name, "新编组 %s（%s）完成组建，已纳入指挥序列。" % [u.callsign, d.name], "good")
@@ -192,11 +221,40 @@ func recruit(kind: String) -> PoliceUnit:
 	return null
 
 
+## 班前部署时撤销新组建的编组（全额退款）
+func disband(kind: String) -> bool:
+	if phase != "setup":
+		return false
+	for i in range(units.size() - 1, -1, -1):
+		var u: PoliceUnit = units[i]
+		if u.kind == kind and u.bought_in_setup:
+			units.remove_at(i)
+			GameState.earn(float(u.info.cost))
+			GameState.stats.money_earned = int(GameState.stats.get("money_earned", 0))
+			if UIKit.same(selected, u):
+				select(null)
+			u.queue_free()
+			_numbers[kind] = int(_numbers.get(kind, 1)) - 1
+			GameState.staff_used = _staff_count()
+			GameState.stats_changed.emit()
+			units_changed.emit()
+			return true
+	return false
+
+
+func bought_count(kind: String) -> int:
+	return units.filter(func(u): return u.kind == kind and u.bought_in_setup).size()
+
+
 # ------------------------------------------------------------------ 主循环
 func _process(delta: float) -> void:
 	if not _started:
 		return
+	if phase == "setup":
+		ops.tick(delta, 0.0, 0.0)
+		return
 	_time += delta
+	_shift_t += delta
 	var dt := GameState.scaled_delta(delta)
 	var dm := GameState.advance(delta)
 	env.apply(GameState.time_of_day())
@@ -226,8 +284,17 @@ func _process(delta: float) -> void:
 		if inc.is_active():
 			active += 1
 	# 见警率压降发案：路面警力越密，整体发案率越低（0.45 ~ 1 倍）
-	var rate := 0.19 * Data.hour_intensity(GameState.hour()) * (1.0 + (GameState.day() - 1) * 0.12) * (0.45 + 0.55 * ops.suppress) * 1.25
-	if active < 16 and rng.randf() < rate * dm:
+	# 节奏：警情少而精，每一起都需要指挥长决策
+	var rate := 0.045 * Data.hour_intensity(GameState.hour()) * (1.0 + (GameState.day() - 1) * 0.15) * (0.45 + 0.55 * ops.suppress) * 1.25
+	var pending := 0
+	for inc in incidents:
+		if inc.state in [Incident.S.CALL, Incident.S.WAITING]:
+			pending += 1
+	if not _opening.is_empty():
+		if _shift_t >= _opening[0][0]:
+			var item: Array = _opening.pop_front()
+			spawn_incident(item[1], true)
+	elif _shift_t > 80.0 and active < 8 and pending < 3 and rng.randf() < rate * dm:
 		spawn_incident()
 
 	_dispatch_t -= delta
@@ -253,7 +320,7 @@ func _process(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ 警情
-func spawn_incident(force_type := "") -> Incident:
+func spawn_incident(force_type := "", guided := false) -> Incident:
 	var hour := GameState.hour()
 	var type_id := force_type
 	if type_id == "":
@@ -290,7 +357,7 @@ func spawn_incident(force_type := "") -> Incident:
 	inc.created = GameState.minutes
 	inc.deadline = float(Data.INCIDENTS[type_id].deadline)
 	var lvl: int = Data.INCIDENTS[type_id].level
-	var wants_call := lvl >= 3 or type_id == "prank" or (lvl == 2 and rng.randf() < 0.35)
+	var wants_call := not guided and (lvl >= 3 or type_id == "prank" or (lvl == 2 and rng.randf() < 0.5))
 	if wants_call:
 		var pool := []
 		for c in Data.CALLS:
@@ -313,9 +380,25 @@ func spawn_incident(force_type := "") -> Incident:
 		GameState.post("110 接警台", "新来电：%s附近群众报警，等待接警研判。" % inc.desc(), "call")
 		call_incoming.emit(inc)
 	else:
-		GameState.post("110 接警台", "%s，%s。" % [inc.desc(), inc.title()], "lv%d" % inc.level())
+		GameState.post("110 接警台", "%s，%s。需要：%s。" % [inc.desc(), inc.title(), Data.req_text(inc.req())], "lv%d" % inc.level())
 	incident_added.emit(inc)
+	_focus_new(inc)
 	return inc
+
+
+## 新警情：玩家手上没有待处理对象时自动选中，让右侧面板直接给出派警名单
+func _focus_new(inc: Incident) -> void:
+	if hud == null or hud.call_panel.visible or answering != null:
+		return
+	if inc.state == Incident.S.CALL:
+		return
+	var busy: bool = selected is Incident and selected.is_active() and selected.state in [Incident.S.CALL, Incident.S.WAITING]
+	if busy:
+		return
+	select(inc)
+	var p := cam.cam.unproject_position(inc.spot.pos)
+	if not get_viewport().get_visible_rect().grow(-160).has_point(p):
+		cam.focus_on(inc.spot.pos)
 
 
 func _tick_incident(inc: Incident, dm: float) -> void:
@@ -336,24 +419,29 @@ func _tick_incident(inc: Incident, dm: float) -> void:
 			var td := inc.true_data()
 			if not inc.revealed:
 				_reveal(inc)
+			var miss: Dictionary = inc.missing(true, true)
 			if inc.true_type == "prank":
 				inc.progress += dm / 3.0
+			elif miss.is_empty():
+				var rate := 0.0
+				var r := inc.req(true)
+				for u in inc.on_scene_units():
+					if r.has(u.skill()):
+						rate += (1.0 - u.fatigue * 0.004) * (1.0 + (u.level - 1) * 0.08)
+				rate /= float(Data.req_count(r))
+				inc.progress += minf(rate, 1.5) / float(td.dur) * dm
 			else:
-				var ok := inc.max_force(true) >= int(td.force)
-				if ok:
-					var rate := 0.0
-					for u in inc.on_scene_units():
-						var m: float = td.match.get(u.kind, 0.5)
-						rate += m * (1.0 - u.fatigue * 0.004) * (1.0 + (u.level - 1) * 0.05)
-					inc.progress += rate / float(td.dur) * dm
-				else:
-					if not inc.stalled:
-						GameState.post(inc.on_scene_units()[0].callsign, "现场武力不足，无法控制局面，请求增援！", "lv3")
-						_tut_once("stall", "现场武力不足，处置停滞了。需要武力等级更高的警种支援，比如特警。")
-					inc.deadline -= dm * 0.6
-					if inc.deadline <= 0.0:
-						_escalate(inc)
-				inc.stalled = not ok
+				if not inc.stalled:
+					var names := []
+					for k in miss.keys():
+						names.append("%s（%s）" % [Data.SKILLS[k].name, Data.UNIT_TYPES[Data.SKILLS[k].unit].short])
+					GameState.post(inc.on_scene_units()[0].callsign, "现场已控制，但处置需要%s警力，请求支援！" % "、".join(names), "lv3")
+					_tut_once("stall", "派去的警种不对口，只能维持现场、拖慢恶化。看面板上红色的专长，派对应的警种过去。")
+				# 维持现场：恶化速度降为 35%
+				inc.deadline -= dm * 0.35
+				if inc.deadline <= 0.0:
+					_escalate(inc)
+			inc.stalled = not miss.is_empty() and inc.true_type != "prank"
 			if inc.progress >= 1.0:
 				_resolve(inc)
 
@@ -497,50 +585,50 @@ func cancel_call() -> void:
 
 # ------------------------------------------------------------------ 派警
 func _auto_dispatch() -> void:
-	if not GameState.auto_dispatch:
+	var bot := DevTools.args.has("bot")   # 自动化测试：模拟玩家派所有警情
+	if not GameState.auto_dispatch and not bot:
 		return
-	var list := incidents.filter(func(i): return i.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE])
-	list.sort_custom(func(a, b): return a.level() > b.level())
-	for inc in list:
-		var d: Dictionary = inc.data()
-		var need := int(d.need)
-		var force := int(d.force) if inc.true_type != "prank" else 0
-		if inc.revealed:
-			force = int(inc.true_data().force)
-		var have: int = inc.units.size()
-		var fh: int = inc.max_force()
-		if have >= need and fh >= force:
+	# 自动派警只接管一般（1 级）警情，重要警情始终由指挥长决策
+	for inc in incidents:
+		if not (inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE]) or (inc.level() > 1 and not bot):
 			continue
-		if have >= need + 2:
-			continue
-		var want := force if fh < force else 0
-		var u := best_unit(inc, want)
-		if u == null and have < need:
-			u = best_unit(inc, 0)
-		if u:
-			assign(u, inc, false)
+		var miss: Dictionary = inc.missing()
+		for k in miss.keys():
+			var u := best_unit(inc, "" if k == "any" else k)
+			if u:
+				assign(u, inc, false)
+				break
 
 
-func best_unit(inc: Incident, min_force: int) -> PoliceUnit:
+func best_unit(inc: Incident, skill := "") -> PoliceUnit:
 	var best: PoliceUnit = null
 	var best_score := INF
-	var d := inc.data()
 	for u in units:
 		if not u.is_available() or u.incident != null:
 			continue
-		var m: float = d.match.get(u.kind, 0.0)
-		if m <= 0.0:
+		if skill != "" and u.skill() != skill:
 			continue
-		if min_force > 0 and u.force() < min_force:
-			continue
-		var eta: float = u.eta_to(inc.spot.road_center, inc.spot.edge)
-		var score: float = eta / sqrt(m) + u.fatigue * 0.04
-		if u.kind == "swat" and int(d.force) < 3:
-			score += 30.0
+		var score: float = u.eta_to(inc.spot.road_center, inc.spot.edge) + u.fatigue * 0.04
 		if score < best_score:
 			best_score = score
 			best = u
 	return best
+
+
+## 派警名单：对口专长优先，再按到场时间；返回 [{unit, eta, fit}]
+func candidates(inc: Incident, limit := 6) -> Array:
+	var miss: Dictionary = inc.missing()
+	var out := []
+	for u in units:
+		if not u.is_available() or u.incident == inc:
+			continue
+		var fit := miss.has(u.skill()) or miss.has("any")
+		out.append({"unit": u, "eta": u.eta_to(inc.spot.road_center, inc.spot.edge), "fit": fit})
+	out.sort_custom(func(a, b):
+		if a.fit != b.fit:
+			return a.fit
+		return a.eta < b.eta)
+	return out.slice(0, limit)
 
 
 func assign(u: PoliceUnit, inc: Incident, manual: bool) -> void:
@@ -581,6 +669,7 @@ func _on_unit_arrived(u: PoliceUnit) -> void:
 func recall(u: PoliceUnit) -> void:
 	if u.incident:
 		u.incident.unassign(u)
+	u.clear_zone()
 	u.return_to_base()
 	GameState.post(u.callsign, "收到，返回驻地。", "unit")
 	units_changed.emit()
@@ -601,8 +690,8 @@ func patrol(u: PoliceUnit) -> void:
 func select(obj) -> void:
 	selected = obj
 	selection_changed.emit(obj)
-	if obj is PoliceUnit:
-		_tut_once("select_unit", "选中单位后：右键点警情可手动派警；右键点路面，巡逻单位会在那一片划定巡区。")
+	if obj is PoliceUnit and phase == "shift":
+		_tut_once("select_unit", "选中单位后：右键点警情可派警；右键点路面可改巡区。")
 
 
 func pick(screen: Vector2) -> Variant:
@@ -673,10 +762,14 @@ func _on_right_click(pos: Vector2) -> void:
 	else:
 		var g := cam.ground_point(pos)
 		if u.info.patrol:
-			u.set_zone(g, ZONE_RADIUS.get(u.kind, 150.0))
+			u.set_zone(g, ZONE_RADIUS.get(u.kind, 150.0), phase == "shift")
 			var near := city.graph.nearest_edge_point(g)
 			GameState.post(u.callsign, "收到，转入%s巡区，守点巡逻。" % city.graph.describe(near.edge, near.t), "unit")
-			_tut_once("zone", "巡区设好了。这组警力会一直在这片巡逻，处警后也会回到这里。打开「热力」图层，把巡区压在红色高发区上。")
+			if phase == "shift":
+				_tut_once("zone", "巡区设好了。这组警力会在这片巡逻，处警后也会回到这里。")
+		elif phase == "setup":
+			GameState.advisor.emit("特警不上街巡逻，在支队待命，接到持械、劫持警情再出动。")
+			return
 		else:
 			u.move_to(g)
 			GameState.post(u.callsign, "收到，前往指定区域布控。", "unit")
@@ -737,12 +830,10 @@ func _tut_once(key: String, text: String) -> void:
 
 func _tutorial_tick(delta: float) -> void:
 	_advisor_t += delta
-	if _advisor_t > 1.5:
-		_tut_once("hello", "指挥长，你好，我是值班长老周。晚高峰快到了，今晚滨江分局由你坐镇。")
-	if _advisor_t > 9.0:
-		_tut_once("auto", "系统默认开启自动派警，一般警情会自己运转。重大警情会进接警台，得你亲自研判。")
-	if _advisor_t > 18.0 and not incidents.is_empty():
-		_tut_once("first_inc", "来警情了。左边是警情队列，地图上的光圈就是位置，点一下能看详情。")
+	for inc in incidents:
+		if inc.state == Incident.S.WAITING:
+			_tut_once("first_inc", "来警情了！右侧面板写着它需要的专长，下面是可派警力名单，对口的排在前面，点一下就派出。")
+			break
 	for inc in incidents:
 		if inc.state == Incident.S.CALL:
 			_tut_once("first_call", "接警台有来电！按空格或点来电卡片接听。多问一句，少跑一趟。")

@@ -26,6 +26,7 @@ var resting := false
 var patrol_center := Vector3.ZERO   # 巡区中心（默认驻地）
 var patrol_radius := 0.0
 var zone_set := false
+var bought_in_setup := false
 var chase_target = null            # Suspect       # 轮休中：返回驻地恢复体力
 
 var _path := PackedVector3Array()
@@ -77,12 +78,24 @@ func force() -> int:
 	return int(info.force)
 
 
+func at_base() -> bool:
+	return Vector2(position.x - spot.x, position.z - spot.z).length() < 4.0
+
+
+func skill() -> String:
+	return info.skill
+
+
+func skill_name() -> String:
+	return Data.SKILLS[info.skill].name
+
+
 # ------------------------------------------------------------------ 规划
 ## 规划到达路段 dest_edge 上中线点 dest 的折线；返回 {pts, len}
 func plan(dest: Vector3, dest_edge: int) -> Dictionary:
 	var starts: Array = []
 	var prefix := PackedVector3Array([global_position])
-	if state == State.IDLE:
+	if state == State.IDLE and at_base():
 		prefix.append(RoadGraph.offset_polyline(PackedVector3Array([facility.drive, graph.positions[facility.nodes[1]]]), RoadGraph.LANE_OFFSET)[0])
 		starts = facility.nodes
 	elif state == State.ONSCENE and incident != null:
@@ -157,7 +170,7 @@ func release(resume_patrol: bool) -> void:
 	incident = null
 	chase_target = null
 	_set_siren(false)
-	if resume_patrol and info.patrol and fatigue < 78.0:
+	if resume_patrol and info.patrol and zone_set and fatigue < 78.0:
 		start_patrol()
 	else:
 		return_to_base()
@@ -217,12 +230,18 @@ func chase_to(target, point: Vector3) -> void:
 
 
 ## 设定巡区：以某点为中心巡逻
-func set_zone(center: Vector3, radius := 150.0) -> void:
+func set_zone(center: Vector3, radius := 150.0, go := true) -> void:
 	patrol_center = Vector3(center.x, 0, center.z)
 	patrol_radius = radius
 	zone_set = true
-	if incident == null and chase_target == null:
+	if go and incident == null and chase_target == null:
 		start_patrol()
+
+
+func clear_zone() -> void:
+	zone_set = false
+	patrol_center = facility.center
+	patrol_radius = info.patrol_radius
 
 
 func _pick_patrol_edge() -> int:
@@ -300,8 +319,8 @@ func tick(dt: float, dm: float) -> bool:
 		return_to_base()
 	elif state == State.IDLE and resting and fatigue < 20.0:
 		resting = false
-		if info.patrol:
-			GameState.post(callsign, "轮休结束，恢复街面巡逻。", "unit")
+		if info.patrol and zone_set:
+			GameState.post(callsign, "轮休结束，返回巡区。", "unit")
 			start_patrol()
 
 	# 警灯
@@ -326,9 +345,7 @@ func tick(dt: float, dm: float) -> bool:
 		elif state == State.CHASE:
 			return false
 		elif state == State.MOVE:
-			state = State.PATROL if info.patrol else State.IDLE
-			if state == State.PATROL:
-				start_patrol()
+			state = State.IDLE
 			return false
 	return arrived
 

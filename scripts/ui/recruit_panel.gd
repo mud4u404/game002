@@ -67,7 +67,12 @@ func _make_card(kind: String) -> Control:
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.custom_minimum_size = Vector2(0, 38)
 	v.add_child(desc)
-	v.add_child(_stat("shield", "武力", float(d.force) / 4.0, UIKit.RED, "%d / 4" % d.force))
+	var sk: Dictionary = Data.SKILLS[d.skill]
+	var skh := HBoxContainer.new()
+	skh.add_theme_constant_override("separation", 6)
+	skh.add_child(UIKit.icon_label(sk.gi, 16, sk.color))
+	skh.add_child(UIKit.label("专长：" + sk.name, 13, sk.color, "bold"))
+	v.add_child(skh)
 	v.add_child(_stat("speed", "速度", (float(d.speed) - 15.0) / 20.0, UIKit.ACCENT, "%d km/h" % int(float(d.speed) * 3.6)))
 	var up := HBoxContainer.new()
 	up.add_child(UIKit.icon_label("schedule", 16, UIKit.TEXT_MUTED))

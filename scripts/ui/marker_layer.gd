@@ -129,10 +129,27 @@ func _draw_incident(inc: Incident, t: float, zoom: float, vr: Rect2) -> void:
 		var frac := clampf(inc.deadline / float(inc.true_data().deadline), 0.0, 1.0)
 		var rc := Color.WHITE if frac > 0.3 else (UIKit.RED if fmod(t * 3.0, 1.0) < 0.5 else Color.WHITE)
 		UIKit.draw_hex_progress(self, p, R + 5, frac, rc, 2.5)
+	# 专长需求小图标：红 = 缺，青 = 在途，绿 = 到场
+	if active and not calling and inc.state != Incident.S.DONE:
+		var r := inc.req()
+		var ks := r.keys()
+		for i in ks.size():
+			var k: String = ks[i]
+			var st := inc.skill_state(k)
+			var ic: Color = {"done": UIKit.GREEN, "enroute": UIKit.CYAN, "missing": UIKit.RED}[st]
+			var cp := p + Vector2((i - (ks.size() - 1) * 0.5) * 17.0, -R - 12)
+			draw_circle(cp, 7.5, Color(0.02, 0.06, 0.15, 0.92))
+			draw_arc(cp, 7.5, 0, TAU, 20, ic, 1.4, true)
+			UIKit.draw_icon(self, Data.SKILLS[k].gi, cp, 10, ic)
 	if sel or hv or inc.stalled or (zoom < 420.0 and active):
 		var text := "110 来电" if calling else inc.title()
 		if inc.stalled:
-			text = "武力不足"
+			var miss: Dictionary = inc.missing(true, true)
+			var names := []
+			for k in miss.keys():
+				if k != "any":
+					names.append(Data.SKILLS[k].name)
+			text = "缺" + "、".join(names)
 		_pill(text, p + Vector2(0, R + 16), UIKit.RED if inc.stalled else Color.WHITE, 11)
 
 
@@ -228,7 +245,7 @@ func _heat(ops: Ops) -> void:
 				var k := clampf(r / mx, 0.0, 1.0)
 				k = clampf((k - 0.2) / 0.8, 0.0, 1.0)
 				var col := Color("f0a020").lerp(Color("ff2d4a"), clampf(k * 1.4 - 0.3, 0.0, 1.0))
-				col.a = pow(k, 1.3) * 0.62
+				col.a = pow(k, 1.4) * 0.45
 				_heat_img.set_pixel(x, y, col)
 		if _heat_tex == null:
 			_heat_tex = ImageTexture.create_from_image(_heat_img)

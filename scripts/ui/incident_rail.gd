@@ -26,7 +26,7 @@ func _gui_input(e: InputEvent) -> void:
 		_hover = i if i >= 0 and i < items.size() else -1
 		if _hover >= 0:
 			var inc: Incident = items[_hover]
-			tooltip_text = "%s\n%s" % ["110 来电，点击接听" if inc.state == Incident.S.CALL else inc.title(), inc.desc()]
+			tooltip_text = "%s\n%s\n需要：%s" % ["110 来电，点击接听" if inc.state == Incident.S.CALL else inc.title(), inc.desc(), Data.req_text(inc.req())]
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		var i := int(e.position.y / ITEM_H)
 		if i >= 0 and i < items.size():
@@ -79,7 +79,7 @@ func _draw() -> void:
 		if frac >= 0.0:
 			UIKit.draw_hex_progress(self, c, R + 4, frac, rc, 2.0)
 		# 已派单位（右侧小点）与缺口
-		var need := int(inc.data().need)
+		var need := inc.need()
 		for k in maxi(need, inc.units.size()):
 			var dp := c + Vector2(R + 10, -6 + k * 7)
 			if k < inc.units.size():

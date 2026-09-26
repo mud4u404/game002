@@ -9,7 +9,7 @@ signal day_report(report: Dictionary)
 
 const START_MINUTES := 17.0 * 60.0 + 10.0
 
-var money := 2_400_000.0
+var money := 600_000.0
 var safety := 70.0          # 群众安全感 0..100
 var opinion := 72.0         # 舆情 0..100（越高越好）
 var staff_cap := 40         # 民警编制
@@ -18,7 +18,7 @@ var minutes := START_MINUTES  # 自第 1 天 00:00 起的游戏分钟
 var speed := 1.0
 var paused := false
 var slowmo := 1.0           # 接警时的时间减速
-var auto_dispatch := true
+var auto_dispatch := false   # 仅对一般（1 级）警情生效
 
 var stats := {"total": 0, "resolved": 0, "failed": 0, "perfect": 0,
 	"resp_sum": 0.0, "resp_n": 0, "calls_ok": 0, "calls_total": 0}
@@ -26,7 +26,7 @@ var _last_day := 1
 
 
 func reset() -> void:
-	money = 2_400_000.0
+	money = 600_000.0
 	safety = 70.0
 	opinion = 72.0
 	staff_used = 0
@@ -34,7 +34,7 @@ func reset() -> void:
 	speed = 1.0
 	paused = false
 	slowmo = 1.0
-	auto_dispatch = true
+	auto_dispatch = false
 	for k in stats.keys():
 		stats[k] = 0
 	_last_day = 1

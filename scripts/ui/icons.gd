@@ -75,6 +75,8 @@ const CODES := {
 	"trending_down": 0xe8e3,
 	"info": 0xe88e,
 	"help": 0xe8fd,
+	"add": 0xe145,
+	"remove": 0xe15b,
 	"remove_road": 0xebfc,
 	"radar": 0xf04e,
 	"videocam": 0xe04b,

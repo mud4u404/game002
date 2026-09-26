@@ -441,15 +441,17 @@ func _chase_logic() -> void:
 		var target: Vector3 = sp.pos if sp.seen else sp.last_seen
 		for u in cs:
 			u.chase_to(sp, target)
-		if not GameState.auto_dispatch or sp.seen_age > 3.0:
+		if sp.seen_age > 3.0:
 			continue
+		# 发现嫌疑人的巡组会自主追缉 1 组；开启自动派警时补足 2 组，其余由指挥长调派
+		var cap := MAX_CHASERS if GameState.auto_dispatch else 1
 		var guard := 0
-		while cs.size() < MAX_CHASERS and guard < MAX_CHASERS:
+		while cs.size() < cap and guard < MAX_CHASERS:
 			guard += 1
 			var best: PoliceUnit = null
 			var bd := INF
 			for u in game.units:
-				if not u.is_available() or u.kind == "swat":
+				if not u.is_available() or not (u.skill() in ["control", "traffic"]):
 					continue
 				var d: float = u.global_position.distance_to(target)
 				if d < bd and d < 420.0:

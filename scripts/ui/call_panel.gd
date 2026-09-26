@@ -124,7 +124,7 @@ func open(p_inc: Incident) -> void:
 		var d: Dictionary = Data.INCIDENTS[o]
 		var name: String = d.name if o != "prank" else "恶作剧 / 无效报警"
 		var btn := _option(d.gi, name, Data.level_color(d.level) if o != "prank" else UIKit.TEXT_MUTED)
-		btn.tooltip_text = "%s警情 · 出警 %d 组 · 武力 ≥ %d" % [Data.level_name(d.level), d.need, d.force] if o != "prank" else "登记备案，不派警"
+		btn.tooltip_text = "%s警情 · 需要 %s" % [Data.level_name(d.level), Data.req_text(d.get("req", {}))] if o != "prank" else "登记备案，不派警"
 		btn.pressed.connect(_on_classify.bind(o))
 		_c_box.add_child(btn)
 	_update_q()

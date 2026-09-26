@@ -60,11 +60,47 @@ func on_scene_units() -> Array:
 	return out
 
 
-func max_force(only_on_scene := false) -> int:
-	var f := 0
+func req(use_true := false) -> Dictionary:
+	return (true_data() if use_true else data()).get("req", {})
+
+
+func need() -> int:
+	return Data.req_count(req())
+
+
+## 缺口：{专长: 缺少数量}。only_on_scene 为 true 时只计已到场警力
+func missing(only_on_scene := false, use_true := false) -> Dictionary:
+	var have := {}
 	for u in (on_scene_units() if only_on_scene else units):
-		f = maxi(f, u.force())
-	return f
+		var k: String = u.skill()
+		have[k] = int(have.get(k, 0)) + 1
+	var out := {}
+	var r := req(use_true)
+	for k in r.keys():
+		var gap := int(r[k]) - int(have.get(k, 0))
+		if gap > 0:
+			out[k] = gap
+	if r.is_empty() and (on_scene_units() if only_on_scene else units).is_empty():
+		out["any"] = 1
+	return out
+
+
+## 某专长的状态：done 已到场满足 / enroute 在途 / missing 缺
+func skill_state(k: String) -> String:
+	var r := req()
+	var n := int(r.get(k, 0))
+	var on := 0
+	var all := 0
+	for u in units:
+		if u.skill() == k:
+			all += 1
+			if u.state == PoliceUnit.State.ONSCENE:
+				on += 1
+	if on >= n:
+		return "done"
+	if all >= n:
+		return "enroute"
+	return "missing"
 
 
 func unassign(u) -> void:

@@ -17,6 +17,7 @@ var root: Control
 var markers: MarkerLayer
 var call_panel: CallPanel
 var recruit_panel: RecruitPanel
+var setup_panel: SetupPanel
 
 var _bar: PanelContainer
 var _clock: Label
@@ -88,6 +89,9 @@ func setup(p_game: Game) -> void:
 	root.add_child(call_panel)
 	recruit_panel = RecruitPanel.new(game)
 	root.add_child(recruit_panel)
+	setup_panel = SetupPanel.new(game)
+	setup_panel.visible = false
+	root.add_child(setup_panel)
 
 	GameState.radio.connect(_on_radio)
 	GameState.advisor.connect(func(t): _advisor_queue.append(t))
@@ -209,6 +213,25 @@ func _build_bar() -> void:
 	_opinion = _pill(h, "campaign", UIKit.AMBER, "舆情")
 	_money = _pill(h, "payments", UIKit.GREEN, "经费")
 	_staff = _pill(h, "badge", UIKit.TEXT_DIM, "民警编制")
+
+
+func enter_setup() -> void:
+	setup_panel.visible = true
+	_dock.visible = false
+	_rail_bg.visible = false
+	markers.layers["heat"] = true
+	_update_layer_btns()
+	_advisor_queue.append("指挥长好，我是值班长老周。开班前先部署：右边按步骤组建警力，再给巡逻车划巡区。")
+	_advisor_queue.append("每个警种只干自己的专长：社区调解、巡警处突、交警交管、特警突击。缺哪种，那类警情就没人能处置。")
+
+
+func enter_shift() -> void:
+	setup_panel.visible = false
+	_dock.visible = true
+	_rail_bg.visible = true
+	markers.layers["heat"] = false
+	_update_layer_btns()
+	game.select(null)
 
 
 func toggle_layer(id: String) -> void:
@@ -412,7 +435,20 @@ func _ctx_incident(inc: Incident) -> void:
 	_right.set_title("情况报告", "", "info")
 	_hex_header(inc.data().gi, Data.level_color(inc.level()), inc.title(), inc.desc())
 	_right_body.add_child(FlowBar.new(inc))
-	_tiles([["schedule", "已用时", "elapsed"], ["timer", "升级时限", "deadline"], ["groups", "出警 / 需求", "need"]])
+	_tiles([["schedule", "已用时", "elapsed"], ["timer", "恶化时限", "deadline"]])
+	# 处置要求：专长芯片
+	var rq := HBoxContainer.new()
+	rq.add_theme_constant_override("separation", 6)
+	rq.alignment = BoxContainer.ALIGNMENT_CENTER
+	_right_body.add_child(UIKit.label("处置需要", 12, UIKit.TEXT_MUTED, "bold"))
+	_right_body.add_child(rq)
+	_fields["req_box"] = rq
+	_fields["req_sig"] = "-"
+	var st := UIKit.label("", 12, UIKit.TEXT_DIM)
+	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fields["req_state"] = st
+	_right_body.add_child(st)
+	# 已派警力
 	var units := HFlowContainer.new()
 	units.add_theme_constant_override("h_separation", 6)
 	units.add_theme_constant_override("v_separation", 6)
@@ -420,27 +456,83 @@ func _ctx_incident(inc: Incident) -> void:
 	_right_body.add_child(units)
 	_fields["unit_box"] = units
 	_fields["unit_sig"] = "-"
+	# 可派警力名单
+	var ct := UIKit.label("可派警力（点击派出）", 12, UIKit.TEXT_MUTED, "bold")
+	_fields["cand_title"] = ct
+	_right_body.add_child(ct)
+	var cands := VBoxContainer.new()
+	cands.add_theme_constant_override("separation", 4)
+	_right_body.add_child(cands)
+	_fields["cand_box"] = cands
+	_fields["cand_sig"] = "-"
+	_fields["cand_t"] = 0.0
 	var btns := []
 	if inc.state == Incident.S.CALL:
 		var cb := UIKit.accent_button("接听", UIKit.RED, 13)
 		cb.custom_minimum_size.y = 34
 		cb.pressed.connect(func(): open_call(inc))
 		btns.append(cb)
-	var add := UIKit.accent_button("增派", UIKit.ACCENT, 13)
-	add.custom_minimum_size.y = 34
-	add.tooltip_text = "派出最近的可用单位"
-	add.pressed.connect(func():
-		var u := game.best_unit(inc, 0)
-		if u:
-			game.assign(u, inc, true)
-		else:
-			GameState.post("指挥中心", "暂无可调派的空闲警力。", "info"))
-	btns.append(add)
 	var fb := UIKit.button("定位", 13)
 	fb.custom_minimum_size.y = 34
-	fb.pressed.connect(func(): game.cam.focus_on(inc.spot.pos, 220))
+	fb.pressed.connect(func(): game.cam.focus_on(inc.spot.pos, 260))
 	btns.append(fb)
 	_bottom_buttons(btns)
+
+
+func _req_chip(inc: Incident, k: String, n: int) -> Control:
+	var sk: Dictionary = Data.SKILLS[k]
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(88, 30)
+	c.tooltip_text = "%s：由%s负责" % [sk.name, Data.UNIT_TYPES[sk.unit].name]
+	c.draw.connect(func():
+		var state := inc.skill_state(k)
+		var col: Color = {"done": UIKit.GREEN, "enroute": UIKit.CYAN, "missing": UIKit.RED}[state]
+		UIKit.draw_round_rect(c, Rect2(Vector2.ZERO, c.size), UIKit.with_alpha(col, 0.14), 15, col, 1)
+		UIKit.draw_icon(c, sk.gi, Vector2(16, 15), 16, col)
+		var txt: String = sk.name + ("×%d" % n if n > 1 else "")
+		c.draw_string(UIKit.font("bold"), Vector2(28, 20), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.TEXT)
+		var mark: String = {"done": "check_circle", "enroute": "route", "missing": "cancel"}[state]
+		UIKit.draw_icon(c, mark, Vector2(c.size.x - 13, 15), 14, col))
+	return c
+
+
+func _cand_row(inc: Incident, e: Dictionary) -> Control:
+	var u: PoliceUnit = e.unit
+	var fit: bool = e.fit
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 38)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	for stn in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.08, 0.2, 0.45, 0.75 if stn == "hover" else 0.5) if fit else Color(0.06, 0.1, 0.2, 0.5 if stn == "hover" else 0.35)
+		sb.border_color = UIKit.with_alpha(UIKit.CYAN if fit else UIKit.TEXT_MUTED, 0.8 if stn == "hover" else 0.35)
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(4)
+		b.add_theme_stylebox_override(stn, sb)
+	var sk: Dictionary = Data.SKILLS[u.skill()]
+	var eta: float = e.eta
+	b.draw.connect(func():
+		var card := Rect2(5, 5, 42, 28)
+		UIKit.draw_round_rect(b, card, MarkerLayer.UNIT_FILL.get(u.kind, UIKit.ACCENT), 3)
+		UIKit.draw_round_rect(b, card.grow(-2), Color(0.78, 0.89, 1.0, 0.92 if fit else 0.5), 2)
+		VehicleArt.draw(b, u.kind, card.grow(-3), Color("f4f8ff"), Color("15357a"), -1.0)
+		var fb := UIKit.font("bold")
+		b.draw_string(fb, Vector2(56, 17), u.callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.TEXT if fit else UIKit.TEXT_DIM)
+		b.draw_string(UIKit.font("reg"), Vector2(56, 32), u.state_name() + (" · 疲劳" if u.fatigue > 60 else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIKit.TEXT_MUTED)
+		var tag: String = sk.name if fit else sk.name + " · 不对口"
+		var tw := fb.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 12
+		var tr := Rect2(150, 10, tw, 18)
+		UIKit.draw_round_rect(b, tr, UIKit.with_alpha(sk.color if fit else UIKit.TEXT_MUTED, 0.2), 9, UIKit.with_alpha(sk.color if fit else UIKit.TEXT_MUTED, 0.7), 1)
+		b.draw_string(fb, Vector2(156, 23), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, sk.color if fit else UIKit.TEXT_MUTED)
+		var et := "%d 分钟" % maxi(ceili(eta), 1)
+		var ew := fb.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		b.draw_string(fb, Vector2(b.size.x - ew - 10, 24), et, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.GREEN if eta <= 3.0 else (UIKit.TEXT if eta <= 6.0 else UIKit.AMBER)))
+	b.pressed.connect(func():
+		game.assign(u, inc, true)
+		_fields["cand_t"] = 0.0
+		_fields["cand_sig"] = "-")
+	return b
 
 
 func _unit_chip(u: PoliceUnit) -> Control:
@@ -478,20 +570,17 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	var s := UIKit.label("%s · %s %s" % [u.info.name, u.rank, u.leader], 12, UIKit.TEXT_DIM)
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_body.add_child(s)
-	_tiles([["info", "状态", "state"], ["shield", "武力等级", "force"], ["speed", "体力", "hp"]])
+	_tiles([["info", "状态", "state"], [Data.SKILLS[u.skill()].gi, "专长", "force"], ["speed", "体力", "hp"]])
+	var dl := UIKit.label(u.info.desc, 12, UIKit.TEXT_MUTED)
+	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_right_body.add_child(dl)
 	var tl := UIKit.label("", 13, UIKit.TEXT_DIM)
 	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_fields["task"] = tl
 	_right_body.add_child(tl)
 	var btns := []
-	if u.info.patrol:
-		var pb := UIKit.accent_button("默认巡区", UIKit.ACCENT, 13)
-		pb.tooltip_text = "取消自定巡区，回到驻地周边巡逻。右键路面可划定新巡区"
-		pb.custom_minimum_size.y = 34
-		pb.pressed.connect(func(): game.patrol(u))
-		btns.append(pb)
-	var rb := UIKit.button("回所", 13)
+	var rb := UIKit.button("回所待命", 13)
 	rb.custom_minimum_size.y = 34
 	rb.pressed.connect(func(): game.recall(u))
 	btns.append(rb)
@@ -517,7 +606,7 @@ func _ctx_suspect(sp: Suspect) -> void:
 		var best: PoliceUnit = null
 		var bd := INF
 		for u in game.units:
-			if u.is_available() and u.kind != "swat":
+			if u.is_available() and u.skill() in ["control", "traffic"]:
 				var d: float = u.global_position.distance_to(sp.last_seen)
 				if d < bd:
 					bd = d
@@ -613,7 +702,58 @@ func _refresh_right() -> void:
 		_setf("elapsed", UIKit.fmt_min(inc.elapsed(GameState.minutes)))
 		var live := inc.state in [Incident.S.WAITING, Incident.S.DISPATCHED, Incident.S.ONSCENE]
 		_setf("deadline", UIKit.fmt_min(inc.deadline) if live else "—", UIKit.RED if live and inc.deadline < 5.0 else UIKit.TEXT)
-		_setf("need", "%d/%d" % [inc.units.size(), int(inc.data().need)], UIKit.RED if inc.stalled else UIKit.TEXT)
+		# 专长需求芯片
+		var r := inc.req()
+		var rsig := str(r) + inc.shown_type
+		if _fields.has("req_box") and rsig != _fields["req_sig"]:
+			_fields["req_sig"] = rsig
+			var rb: Control = _fields["req_box"]
+			for c in rb.get_children():
+				c.queue_free()
+			if r.is_empty():
+				rb.add_child(UIKit.label("任意警力到场核实", 12, UIKit.TEXT))
+			for k in r.keys():
+				rb.add_child(_req_chip(inc, k, int(r[k])))
+		if _fields.has("req_box"):
+			for c in _fields["req_box"].get_children():
+				c.queue_redraw()
+		var miss: Dictionary = inc.missing()
+		var msg := ""
+		if inc.state == Incident.S.CALL:
+			msg = "先接听来电，问清情况再定性。"
+		elif not live:
+			msg = ""
+		elif miss.is_empty():
+			msg = "警力已齐，到场后开始处置。" if inc.state != Incident.S.ONSCENE or inc.stalled else "处置中……"
+		else:
+			var names := []
+			for k in miss.keys():
+				names.append(Data.SKILLS[k].name + "（" + Data.UNIT_TYPES[Data.SKILLS[k].unit].short + "）" if k != "any" else "任意警力")
+			msg = "还缺：" + "、".join(names)
+			if inc.stalled:
+				msg += "。现场只能维持，恶化已放缓。"
+		_setf("req_state", msg, UIKit.RED if not miss.is_empty() and live else UIKit.TEXT_DIM)
+		# 可派警力名单（每秒刷新）
+		if _fields.has("cand_box"):
+			var show := live
+			_fields["cand_box"].visible = show
+			_fields["cand_title"].visible = show
+			_fields["cand_t"] = float(_fields["cand_t"]) - 0.2
+			if show and float(_fields["cand_t"]) <= 0.0:
+				_fields["cand_t"] = 1.0
+				var list := game.candidates(inc, 5)
+				var csig := ""
+				for e in list:
+					csig += "%d:%d:%s," % [e.unit.uid, ceili(e.eta), e.fit]
+				if csig != _fields["cand_sig"]:
+					_fields["cand_sig"] = csig
+					var cb: Control = _fields["cand_box"]
+					for c in cb.get_children():
+						c.queue_free()
+					if list.is_empty():
+						cb.add_child(UIKit.label("暂无空闲警力。可以在「招募」组建新编组。", 12, UIKit.AMBER))
+					for e in list:
+						cb.add_child(_cand_row(inc, e))
 		var sig := ""
 		for u in inc.units:
 			sig += "%d:%d:%d," % [u.uid, u.state, ceili(u.eta_min)]
@@ -627,7 +767,7 @@ func _refresh_right() -> void:
 	elif obj is PoliceUnit:
 		var u: PoliceUnit = obj
 		_setf("state", u.state_name() if not u.resting else "轮休", u.state_color())
-		_setf("force", "%d/4" % u.force())
+		_setf("force", u.skill_name(), Data.SKILLS[u.skill()].color)
 		var hp := int(100.0 - u.fatigue)
 		_setf("hp", "%d%%" % hp, UIKit.GREEN if hp > 50 else (UIKit.AMBER if hp > 20 else UIKit.RED))
 		var task := "暂无任务"
@@ -635,8 +775,12 @@ func _refresh_right() -> void:
 			task = u.incident.title() + " · " + u.incident.desc()
 		elif u.chase_target != null:
 			task = "追缉抢劫嫌疑人"
+		elif u.zone_set:
+			task = "巡区巡逻 · 半径 %d 米（右键路面可改）" % int(u.patrol_radius)
 		elif u.info.patrol:
-			task = ("自定巡区 · " if u.zone_set else "驻地巡区 · ") + "半径 %d 米" % int(u.patrol_radius)
+			task = "驻地待命 · 右键路面划定巡区"
+		else:
+			task = "支队待命"
 		_setf("task", task)
 		if _fields.has("art"):
 			_fields["art"].queue_redraw()
@@ -676,7 +820,7 @@ func _build_dock() -> void:
 	_dock.add_theme_constant_override("separation", 8)
 	root.add_child(_dock)
 	for it in [["call", "phone_in_talk", "来电"], ["incident", "notifications", "警情"], ["units", "groups", "警力"],
-			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["checkpoint", "front_hand", "设卡"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派警"]]:
+			["recruit", "person_add", "招募"], ["facility", "apartment", "设施"], ["checkpoint", "front_hand", "设卡"], ["stats", "bar_chart", "统计"], ["auto", "route", "自动派一般"]]:
 		var b := _round_button(it[0], it[1], it[2])
 		_dock.add_child(b)
 		_dock_btns[it[0]] = b
@@ -766,7 +910,7 @@ func _on_dock(id: String) -> void:
 			return
 		"auto":
 			GameState.auto_dispatch = not GameState.auto_dispatch
-			GameState.post("指挥中心", "自动派警已" + ("开启。" if GameState.auto_dispatch else "关闭，所有警情需手动调度。"), "sys")
+			GameState.post("指挥中心", "一般（1 级）警情自动派警已" + ("开启，重要警情仍由你决策。" if GameState.auto_dispatch else "关闭，所有警情由你调度。"), "sys")
 	_update_dock()
 
 
