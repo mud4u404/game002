@@ -38,7 +38,7 @@ func _init(p_game: Game) -> void:
 	b.add_child(row)
 	for kind in Data.UNIT_TYPES.keys():
 		row.add_child(_make_card(kind))
-	var tip := UIKit.label("新编组在所属设施组建后立即上岗。维持费按时间持续扣除，每天 00:00 按群众安全感拨付经费。", 12, UIKit.TEXT_MUTED)
+	var tip := UIKit.label("新编组在所属设施组建，立即上岗。", 12, UIKit.TEXT_MUTED)
 	b.add_child(tip)
 
 
@@ -47,8 +47,10 @@ func _make_card(kind: String) -> Control:
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", UIKit.panel_box(12, UIKit.BG2, 16))
 	card.custom_minimum_size = Vector2(236, 0)
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
+	v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card.add_child(v)
 	var icon := Control.new()
 	icon.custom_minimum_size = Vector2(0, 76)
@@ -73,6 +75,12 @@ func _make_card(kind: String) -> Control:
 	skh.add_child(UIKit.icon_label(sk.gi, 16, sk.color))
 	skh.add_child(UIKit.label("专长：" + sk.name, 13, sk.color, "bold"))
 	v.add_child(skh)
+	v.add_child(_incidents_block(d.skill))
+	# spacer 在警情列表下方：吸收各卡警情条数差，让底部按钮贴底对齐
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	spacer.custom_minimum_size = Vector2(0, 0)
+	v.add_child(spacer)
 	v.add_child(_stat("speed", "速度", (float(d.speed) - 15.0) / 20.0, UIKit.ACCENT, "%d km/h" % int(float(d.speed) * 3.6)))
 	var up := HBoxContainer.new()
 	up.add_child(UIKit.icon_label("schedule", 16, UIKit.TEXT_MUTED))
@@ -93,6 +101,47 @@ func _make_card(kind: String) -> Control:
 	v.add_child(btn)
 	_cards.append({"kind": kind, "btn": btn, "have": have})
 	return card
+
+
+func _incidents_block(skill_id: String) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	var label_row := HBoxContainer.new()
+	label_row.add_theme_constant_override("separation", 6)
+	label_row.add_child(UIKit.icon_label("info", 14, UIKit.TEXT_MUTED))
+	label_row.add_child(UIKit.label("负责警情", 12, UIKit.TEXT_MUTED, "bold"))
+	box.add_child(label_row)
+	var matches: Array = []
+	for type_id in Data.INCIDENTS.keys():
+		if type_id == "prank":
+			continue
+		var inc: Dictionary = Data.INCIDENTS[type_id]
+		var req: Dictionary = inc.get("req", {})
+		if req.has(skill_id):
+			matches.append({"name": inc.name, "gi": inc.gi})
+	var shown := matches.slice(0, 6)
+	for m in shown:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 5)
+		row.add_child(UIKit.icon_label(m.gi, 12, UIKit.TEXT_DIM))
+		row.add_child(UIKit.label(m.name, 11, UIKit.TEXT_DIM))
+		box.add_child(row)
+	if matches.size() > shown.size():
+		var more: int = matches.size() - shown.size()
+		var more_row := HBoxContainer.new()
+		more_row.add_theme_constant_override("separation", 5)
+		var pad := Control.new()
+		pad.custom_minimum_size = Vector2(12, 0)
+		more_row.add_child(pad)
+		more_row.add_child(UIKit.label("等 %d 类" % more, 11, UIKit.TEXT_MUTED))
+		box.add_child(more_row)
+	if matches.is_empty():
+		var empty_row := HBoxContainer.new()
+		empty_row.add_theme_constant_override("separation", 5)
+		empty_row.add_child(UIKit.icon_label("remove", 12, UIKit.TEXT_MUTED))
+		empty_row.add_child(UIKit.label("无直接对应警情", 11, UIKit.TEXT_MUTED))
+		box.add_child(empty_row)
+	return box
 
 
 func _stat(icon_name: String, name: String, v: float, c: Color, txt: String) -> Control:
