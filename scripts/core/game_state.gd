@@ -18,7 +18,7 @@ var minutes := START_MINUTES  # 自第 1 天 00:00 起的游戏分钟
 var speed := 1.0
 var paused := false
 var slowmo := 1.0           # 接警时的时间减速
-var auto_dispatch := false   # 仅对一般（1 级）警情生效
+var auto_dispatch := true    # 就近、警种匹配、自动派警
 
 var stats := {"total": 0, "resolved": 0, "failed": 0, "perfect": 0,
 	"resp_sum": 0.0, "resp_n": 0, "calls_ok": 0, "calls_total": 0}
@@ -34,7 +34,7 @@ func reset() -> void:
 	speed = 1.0
 	paused = false
 	slowmo = 1.0
-	auto_dispatch = false
+	auto_dispatch = true
 	for k in stats.keys():
 		stats[k] = 0
 	_last_day = 1
