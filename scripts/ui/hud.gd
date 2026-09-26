@@ -18,6 +18,7 @@ var markers: MarkerLayer
 var call_panel: CallPanel
 var recruit_panel: RecruitPanel
 var setup_panel: SetupPanel
+var day_report_panel: DayReportPanel
 
 var _bar: PanelContainer
 var _clock: Label
@@ -92,6 +93,8 @@ func setup(p_game: Game) -> void:
 	setup_panel = SetupPanel.new(game)
 	setup_panel.visible = false
 	root.add_child(setup_panel)
+	day_report_panel = DayReportPanel.new()
+	root.add_child(day_report_panel)
 
 	GameState.radio.connect(_on_radio)
 	GameState.advisor.connect(func(t): _advisor_queue.append(t))
@@ -1013,6 +1016,9 @@ func toggle_recruit() -> void:
 
 
 func close_overlays() -> bool:
+	if day_report_panel != null and day_report_panel.visible:
+		day_report_panel.close()
+		return true
 	if recruit_panel.visible:
 		recruit_panel.visible = false
 		_update_dock()
