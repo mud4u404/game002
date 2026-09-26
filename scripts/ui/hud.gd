@@ -672,7 +672,9 @@ func _show_units() -> void:
 		var hsp := Control.new()
 		hsp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		head.add_child(hsp)
-		head.add_child(UIKit.label("空闲 %d / 共 %d" % [idle, group.size()], 12, UIKit.TEXT_MUTED))
+		var cnt := UIKit.label("空闲 %d / 共 %d" % [idle, group.size()], 12, UIKit.RED if group.is_empty() else UIKit.TEXT_MUTED)
+		_fields["unit_cnt_" + skill_id] = cnt
+		head.add_child(cnt)
 		list.add_child(head)
 		for u in group:
 			var row := UnitRow.new(u, game)
@@ -711,6 +713,22 @@ func _refresh_right() -> void:
 		_setf("seen_rate", "%d%%" % roundi(game.ops.seen_rate * 100.0))
 		_setf("cover5", "%d%%" % roundi(game.ops.cover5 * 100.0))
 		_setf("caught", "%d/%d" % [int(st.get("caught", 0)), int(st.get("escaped", 0))])
+		return
+	if _right_mode == "units":
+		# 分组空闲/总数是动态的：挂在刷新循环里，不依赖 units_changed
+		for skill_id in Data.SKILLS.keys():
+			var total := 0
+			var idle := 0
+			for u in game.units:
+				if u.skill() == skill_id:
+					total += 1
+					if u.is_available():
+						idle += 1
+			var key: String = "unit_cnt_" + skill_id
+			if _fields.has(key) and _fields[key] is Label:
+				var l: Label = _fields[key]
+				l.text = "空闲 %d / 共 %d" % [idle, total]
+				l.add_theme_color_override("font_color", UIKit.RED if total == 0 else UIKit.TEXT_MUTED)
 		return
 	if _right_mode != "select":
 		return
