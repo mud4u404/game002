@@ -72,6 +72,14 @@ const INCIDENTS := {
 		"match": {"community": 1.6, "patrol": 1.1, "traffic": 0.9, "swat": 0.8}, "icon": "寻"},
 	"theft": {"name": "盗窃（已离开）", "gi": "shopping_bag", "level": 1, "req": {"mediate": 1}, "force": 0, "need": 1, "dur": 16.0, "deadline": 50.0, "esc": "",
 		"match": {"community": 1.3, "patrol": 1.2, "traffic": 0.6, "swat": 0.6}, "icon": "盗"},
+	"ebike_theft": {"name": "电动车被盗", "gi": "two_wheeler", "level": 1, "req": {"mediate": 1}, "force": 0, "need": 1, "dur": 16.0, "deadline": 50.0, "esc": "",
+		"match": {"community": 1.5, "patrol": 1.1, "traffic": 0.7, "swat": 0.5}, "icon": "电"},
+	"lost_child": {"name": "儿童走失", "gi": "person_search", "level": 2, "req": {"mediate": 1, "control": 1}, "force": 0, "need": 2, "dur": 18.0, "deadline": 20.0, "esc": "",
+		"match": {"community": 1.5, "patrol": 1.3, "traffic": 0.8, "swat": 0.6}, "icon": "童"},
+	"crowd_dispute": {"name": "聚集纠纷", "gi": "groups", "level": 2, "req": {"mediate": 1, "control": 1}, "force": 1, "need": 2, "dur": 16.0, "deadline": 22.0, "esc": "fight",
+		"match": {"community": 1.3, "patrol": 1.3, "traffic": 0.7, "swat": 0.8}, "icon": "聚"},
+	"fraud_report": {"name": "电信诈骗报案", "gi": "phone_in_talk", "level": 2, "req": {"mediate": 1}, "force": 0, "need": 1, "dur": 24.0, "deadline": 45.0, "esc": "",
+		"match": {"community": 1.5, "patrol": 1.0, "traffic": 0.5, "swat": 0.4}, "icon": "诈"},
 	"traffic_minor": {"name": "交通事故（轻微）", "gi": "car_crash", "level": 1, "req": {"traffic": 1}, "force": 0, "need": 1, "dur": 14.0, "deadline": 30.0, "esc": "jam",
 		"match": {"community": 0.7, "patrol": 0.8, "traffic": 1.8, "swat": 0.5}, "icon": "事"},
 	"jam": {"name": "交通拥堵", "gi": "traffic", "level": 1, "req": {"traffic": 1}, "force": 0, "need": 1, "dur": 16.0, "deadline": 40.0, "esc": "",
@@ -106,6 +114,10 @@ static func hour_weight(type_id: String, hour: int) -> float:
 		"dispute": return 1.2 if (day or night) else 0.5
 		"missing": return 1.0 if day else 0.25
 		"theft": return 1.3 if day else 0.5
+		"ebike_theft": return 1.1 if day else 0.35
+		"lost_child": return 0.8 if day else 0.2
+		"crowd_dispute": return 0.7 if (day or night) else 0.4
+		"fraud_report": return 0.65 if day else 0.12
 		"traffic_minor": return 1.8 if rush else 0.8
 		"jam": return 1.6 if rush else 0.2
 		"drunk": return 1.6 if night else 0.15
@@ -219,6 +231,24 @@ const CALLS := [
 			{"q": "谢谢您，请留在原地等民警。", "a": "好嘞，我等着。"},
 		],
 		"options": ["theft", "robbery", "dispute"]},
+	{"true": "lost_child", "report": "lost_child", "caller": "女 · 约三十岁 · 着急",
+		"open": "我女儿不见了！刚才还在公园门口的！求你们快找找！",
+		"questions": [
+			{"q": "小朋友多大？穿什么衣服？", "a": "五岁，穿红色的衣服，头发短短的，个子小小的。"},
+			{"q": "最后一次看到是在哪里？", "a": "就在{loc}的滑梯旁边，我就低头看了下手机……"},
+			{"q": "名字是什么？", "a": "小名多多……你们快点好不好！"},
+			{"q": "您先在原地等，我们马上派警力。", "a": "好好，我就在门口，求你们了……"},
+		],
+		"options": ["lost_child", "missing", "prank"]},
+	{"true": "fraud_report", "report": "fraud_report", "caller": "女 · 约四十岁 · 焦急",
+		"open": "我上当了！钱转出去了，对方现在找不到人了！",
+		"questions": [
+			{"q": "对方是怎么找到您的？", "a": "先来电话，自称是客服，我收到的东西有质量问题要退款……"},
+			{"q": "您是怎么转账的？", "a": "他让我点开一个网页，走什么刷单返利的流程，我就转了两次……"},
+			{"q": "一共转了多少？", "a": "卡里的钱都转了，是在{road}这边的银行转的……"},
+			{"q": "请先别再转账，带好手机来所里做记录。", "a": "好好，我现在就过去，钱还能追回来吗……"},
+		],
+		"options": ["fraud_report", "prank", "theft"]},
 ]
 
 # ---------------------------------------------------------------- 命名素材
