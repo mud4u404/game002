@@ -1,6 +1,6 @@
 class_name UnitRow
 extends Control
-## 警力列表行（参照《112》单位面板）：车辆卡片 + 呼号 + 车组人员 + 状态。
+## 警力列表行（参照《112》单位面板）：车辆卡片 + 呼号 + 车组人员 + 当前任务 + 状态。
 
 signal pressed(u: PoliceUnit)
 
@@ -55,6 +55,28 @@ func _draw() -> void:
 	UIKit.draw_round_rect(self, Rect2(bx, 34, bw, 3), Color(1, 1, 1, 0.1), 1)
 	var fc := UIKit.GREEN if u.fatigue < 50 else (UIKit.AMBER if u.fatigue < 80 else UIKit.RED)
 	UIKit.draw_round_rect(self, Rect2(bx, 34, bw * (1.0 - u.fatigue / 100.0), 3), fc, 1)
+	# 当前任务：呼号下方、人员/体力条右侧，10px / TEXT_MUTED，超长截断
 	var st: String = u.state_name() if not u.resting else "轮休"
 	var sw := fb.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 14.0
+	var task := _task_text()
+	if task != "":
+		var fr := UIKit.font("reg")
+		var max_w: float = maxf(40.0, size.x - sw - 16.0 - (bx + bw + 8.0))
+		var s := task
+		if fr.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x > max_w:
+			while s.length() > 1 and fr.get_string_size(s + "…", HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x > max_w:
+				s = s.substr(0, s.length() - 1)
+			s += "…"
+		draw_string(fr, Vector2(bx + bw + 8, 41), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIKit.TEXT_MUTED)
 	UIKit.draw_chip(self, st, Vector2(size.x - sw - 8, 14), u.state_color(), 11)
+
+
+## 当前任务一行文案：警情 > 追缉 > 巡区 > 驻地
+func _task_text() -> String:
+	if u.incident != null:
+		return u.incident.title()
+	if u.chase_target != null:
+		return "追缉嫌疑人"
+	if u.zone_set:
+		return "巡区"
+	return "驻地待命"

@@ -660,12 +660,33 @@ func _show_units() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 2)
 	scroll.add_child(list)
-	for u in game.units:
-		var row := UnitRow.new(u, game)
-		row.pressed.connect(func(unit):
-			game.cam.focus_on(unit.global_position)
-			game.select(unit))
-		list.add_child(row)
+	# 按专长分组（Data.SKILLS 键序：调解→处突→交管→突击），空组也显示，提醒缺编
+	for skill_id in Data.SKILLS.keys():
+		var sk: Dictionary = Data.SKILLS[skill_id]
+		var group: Array = []
+		var idle := 0
+		for u in game.units:
+			if u.skill() == skill_id:
+				group.append(u)
+				if u.is_available():
+					idle += 1
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 6)
+		head.add_child(UIKit.icon_label(sk.gi, 14, sk.color))
+		head.add_child(UIKit.label(sk.name, 13, sk.color, "bold"))
+		var hsp := Control.new()
+		hsp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(hsp)
+		var cnt := UIKit.label("空闲 %d / 共 %d" % [idle, group.size()], 12, UIKit.RED if group.is_empty() else UIKit.TEXT_MUTED)
+		_fields["unit_cnt_" + skill_id] = cnt
+		head.add_child(cnt)
+		list.add_child(head)
+		for u in group:
+			var row := UnitRow.new(u, game)
+			row.pressed.connect(func(unit):
+				game.cam.focus_on(unit.global_position)
+				game.select(unit))
+			list.add_child(row)
 
 
 func _show_stats() -> void:
@@ -697,6 +718,22 @@ func _refresh_right() -> void:
 		_setf("seen_rate", "%d%%" % roundi(game.ops.seen_rate * 100.0))
 		_setf("cover5", "%d%%" % roundi(game.ops.cover5 * 100.0))
 		_setf("caught", "%d/%d" % [int(st.get("caught", 0)), int(st.get("escaped", 0))])
+		return
+	if _right_mode == "units":
+		# 分组空闲/总数是动态的：挂在刷新循环里，不依赖 units_changed
+		for skill_id in Data.SKILLS.keys():
+			var total := 0
+			var idle := 0
+			for u in game.units:
+				if u.skill() == skill_id:
+					total += 1
+					if u.is_available():
+						idle += 1
+			var key: String = "unit_cnt_" + skill_id
+			if _fields.has(key) and _fields[key] is Label:
+				var l: Label = _fields[key]
+				l.text = "空闲 %d / 共 %d" % [idle, total]
+				l.add_theme_color_override("font_color", UIKit.RED if total == 0 else UIKit.TEXT_MUTED)
 		return
 	if _right_mode != "select":
 		return

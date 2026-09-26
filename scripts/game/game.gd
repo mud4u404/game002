@@ -123,6 +123,9 @@ func _dev_hooks() -> void:
 	if a.has("test-recruit"):
 		await get_tree().create_timer(0.5).timeout
 		hud.toggle_recruit()
+	if a.has("test-units"):
+		await get_tree().create_timer(1.0).timeout
+		hud._show_units()
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
