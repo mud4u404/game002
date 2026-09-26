@@ -2,7 +2,8 @@ class_name DayReportPanel
 extends Control
 ## 每日 00:00 弹出的值班日报（结算面板）。
 ## - 监听 GameState.day_report：暂停游戏并居中弹出
-## - "继续值班"按钮恢复原速度并关闭
+## - "继续值班"按钮恢复原速度并关闭；Esc / Enter / Space 也可关
+## - 面板可见时吞掉所有输入，避免游戏在背后继续跑
 ## - 当日数字 = 当前统计 - 上一次日报的快照
 
 const W := 480.0
@@ -13,7 +14,9 @@ const EVAL_SAFETY_BAD := 45.0        # 安全感 < 此值即触发"约谈"
 
 var _panel: TechPanel
 var _tiles: Dictionary = {}
-var _verdict: Label
+var _verdict_box: PanelContainer
+var _verdict_label: Label
+var _verdict_sb: StyleBoxFlat
 var _snapshot: Dictionary = {}
 var _was_paused := false
 var _prev_speed := 1.0
@@ -23,11 +26,10 @@ func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
-	# 半透明遮罩
+	# 半透明遮罩：仅用于视觉，不再响应点击关闭
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.gui_input.connect(_on_dim_click)
 	add_child(dim)
 	_panel = TechPanel.new("值班日报", "bar_chart", UIKit.ACCENT, false)
 	_panel.custom_minimum_size = Vector2(W, 0)
@@ -35,9 +37,7 @@ func _init() -> void:
 	var b := _panel.body
 	b.add_theme_constant_override("separation", 12)
 	_build_tiles(b)
-	_verdict = UIKit.label("", 15, UIKit.TEXT, "bold")
-	_verdict.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.add_child(_verdict)
+	_build_verdict(b)
 	var btn := UIKit.accent_button("继续值班", UIKit.ACCENT, 15)
 	btn.custom_minimum_size.y = 44
 	btn.pressed.connect(close)
@@ -46,16 +46,31 @@ func _init() -> void:
 	_snapshot = _snapshot_current()
 
 
-func _on_dim_click(e: InputEvent) -> void:
-	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
-		close()
+func _build_verdict(parent: VBoxContainer) -> void:
+	# 胶囊徽章：底色 20% 透明 + 评价色边框 + 居中字号 18
+	_verdict_sb = StyleBoxFlat.new()
+	_verdict_sb.set_corner_radius_all(20)
+	_verdict_sb.content_margin_left = 28
+	_verdict_sb.content_margin_right = 28
+	_verdict_sb.content_margin_top = 8
+	_verdict_sb.content_margin_bottom = 8
+	_verdict_box = PanelContainer.new()
+	_verdict_box.add_theme_stylebox_override("panel", _verdict_sb)
+	var wrap := HBoxContainer.new()
+	wrap.alignment = BoxContainer.ALIGNMENT_CENTER
+	wrap.add_theme_constant_override("separation", 0)
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.add_child(_verdict_box)
+	_verdict_label = UIKit.label("", 18, UIKit.TEXT, "bold")
+	_verdict_box.add_child(_verdict_label)
+	parent.add_child(wrap)
 
 
 func _build_tiles(parent: VBoxContainer) -> void:
 	var rows: Array = [
-		[["notifications", "当日接警", "total"], ["check_circle", "已结案", "resolved"], ["cancel", "处置失败", "failed"]],
+		[["notifications", "接警数", "total"], ["check_circle", "已结案", "resolved"], ["cancel", "失败数", "failed"]],
 		[["timer", "平均到场", "avg"], ["front_hand", "抓获 / 逃脱", "caught"], ["payments", "经费拨付", "grant"]],
-		[["health_and_safety", "群众安全感", "safety"], ["campaign", "舆情", "opinion"], ["sentiment_satisfied", "圆满处置", "perfect"]],
+		[["health_and_safety", "安全感", "safety"], ["campaign", "舆情", "opinion"], ["sentiment_satisfied", "圆满处置", "perfect"]],
 	]
 	for row in rows:
 		var h := HBoxContainer.new()
@@ -79,10 +94,15 @@ func _tile(parent: HBoxContainer, icon_name: String, tip: String, key: String) -
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", -2)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_child(UIKit.icon_label(icon_name, 16, UIKit.TEXT_MUTED))
+	var ic := UIKit.icon_label(icon_name, 16, UIKit.TEXT_MUTED)
+	ic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(ic)
 	var val := UIKit.label("—", 17, UIKit.TEXT, "bold")
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(val)
+	var lab := UIKit.label(tip, 11, UIKit.TEXT_MUTED)
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(lab)
 	_tiles[key] = val
 	pc.add_child(v)
 	parent.add_child(pc)
@@ -120,6 +140,17 @@ func _metric_color(v: float) -> Color:
 	return UIKit.RED
 
 
+func _input(event: InputEvent) -> void:
+	# 面板可见时吞掉所有输入，避免 game.gd 在背后继续跑
+	if not visible:
+		return
+	if event is InputEventKey:
+		var key: InputEventKey = event as InputEventKey
+		if key.pressed and not key.echo and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_SPACE]:
+			close()
+	get_viewport().set_input_as_handled()
+
+
 func _on_day_report(report: Dictionary) -> void:
 	var cur: Dictionary = _snapshot_current()
 	var total: int = int(cur.get("total", 0)) - int(_snapshot.get("total", 0))
@@ -145,6 +176,7 @@ func _on_day_report(report: Dictionary) -> void:
 	_set_tile("safety", "%.0f" % GameState.safety, _metric_color(GameState.safety))
 	_set_tile("opinion", "%.0f" % GameState.opinion, _metric_color(GameState.opinion))
 	_set_tile("perfect", str(perfect))
+	# 评价胶囊徽章
 	var v_color: Color = UIKit.AMBER
 	var v_text: String = "平稳"
 	if failed == 0 and GameState.safety >= EVAL_SAFETY_OK:
@@ -153,8 +185,11 @@ func _on_day_report(report: Dictionary) -> void:
 	elif failed >= EVAL_FAILED_BAD or GameState.safety < EVAL_SAFETY_BAD:
 		v_color = UIKit.RED
 		v_text = "市局约谈"
-	_verdict.text = v_text
-	_verdict.add_theme_color_override("font_color", v_color)
+	_verdict_label.text = v_text
+	_verdict_label.add_theme_color_override("font_color", v_color)
+	_verdict_sb.bg_color = UIKit.with_alpha(v_color, 0.2)
+	_verdict_sb.border_color = v_color
+	_verdict_sb.set_border_width_all(2)
 	# 暂停游戏
 	_was_paused = GameState.paused
 	_prev_speed = GameState.speed
