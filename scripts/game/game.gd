@@ -126,6 +126,20 @@ func _dev_hooks() -> void:
 	if a.has("test-units"):
 		await get_tree().create_timer(1.0).timeout
 		hud._show_units()
+	if a.has("test-levelup"):
+		await get_tree().create_timer(2.0).timeout
+		var target: PoliceUnit = null
+		for u in units:
+			if u.kind == "patrol":
+				target = u
+				break
+		if target == null and not units.is_empty():
+			target = units[0]
+		if target != null:
+			target.gain_xp(Data.XP_PER_LEVEL * float(target.level))
+			target.gain_xp(Data.XP_PER_LEVEL * float(target.level))
+			select(target)
+			cam.focus_on(target.global_position, 280)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -436,7 +450,7 @@ func _tick_incident(inc: Incident, dm: float) -> void:
 				var r := inc.req(true)
 				for u in inc.on_scene_units():
 					if r.has(u.skill()):
-						rate += (1.0 - u.fatigue * 0.004) * (1.0 + (u.level - 1) * 0.08)
+						rate += (1.0 - u.fatigue * 0.004) * (1.0 + (u.level - 1) * Data.LEVEL_BONUS)
 				rate /= float(Data.req_count(r))
 				inc.progress += minf(rate, 1.5) / float(td.dur) * dm
 			else:

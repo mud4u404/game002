@@ -575,6 +575,27 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	var t2 := UIKit.label(u.callsign, 17, UIKit.TEXT, "bold")
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_body.add_child(t2)
+	# 等级徽章 + 经验条 + 效率小字（动态，挂 _refresh_right）
+	var lvh := HBoxContainer.new()
+	lvh.add_theme_constant_override("separation", 8)
+	var badge := UIKit.tag("Lv.%d" % u.level, UIKit.ACCENT, 12)
+	_fields["lv_badge"] = badge
+	lvh.add_child(badge)
+	var xpbar := MeterBar.new(UIKit.ACCENT, 6, 12)
+	xpbar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	xpbar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_fields["xp_bar"] = xpbar
+	lvh.add_child(xpbar)
+	var xpt := UIKit.label("", 12, UIKit.TEXT_DIM)
+	xpt.custom_minimum_size = Vector2(64, 0)
+	xpt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fields["xp_txt"] = xpt
+	lvh.add_child(xpt)
+	_right_body.add_child(lvh)
+	var eff := UIKit.label("", 11, UIKit.TEXT_MUTED)
+	eff.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fields["lv_eff"] = eff
+	_right_body.add_child(eff)
 	var s := UIKit.label("%s · %s %s" % [u.info.name, u.rank, u.leader], 12, UIKit.TEXT_DIM)
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_body.add_child(s)
@@ -815,6 +836,19 @@ func _refresh_right() -> void:
 		_setf("force", u.skill_name(), Data.SKILLS[u.skill()].color)
 		var hp := int(100.0 - u.fatigue)
 		_setf("hp", "%d%%" % hp, UIKit.GREEN if hp > 50 else (UIKit.AMBER if hp > 20 else UIKit.RED))
+		# 等级 / 经验 / 效率（实时）
+		var need: float = Data.XP_PER_LEVEL * float(u.level)
+		if _fields.has("lv_badge") and _fields["lv_badge"] is Label:
+			var lb: Label = _fields["lv_badge"]
+			lb.text = "Lv.%d" % u.level
+		if _fields.has("xp_bar") and _fields["xp_bar"] is MeterBar:
+			var xb: MeterBar = _fields["xp_bar"]
+			xb.set_value(clampf(u.xp / maxf(need, 1.0), 0.0, 1.0), UIKit.ACCENT)
+		_setf("xp_txt", "%d / %d" % [int(u.xp), int(need)])
+		if u.level <= 1:
+			_setf("lv_eff", "新编组", UIKit.TEXT_MUTED)
+		else:
+			_setf("lv_eff", "处置效率 +%d%%" % int((u.level - 1) * Data.LEVEL_BONUS * 100.0), UIKit.GREEN)
 		var task := "暂无任务"
 		if u.incident:
 			task = u.incident.title() + " · " + u.incident.desc()

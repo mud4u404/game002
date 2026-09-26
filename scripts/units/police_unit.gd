@@ -18,6 +18,7 @@ var incident: Incident = null
 var fatigue := 0.0
 var xp := 0.0
 var level := 1
+var level_up_at := -1000.0   # 晋升时刻（秒），用于地图卡片 3 秒光环
 var leader := ""
 var rank := ""
 var graph: RoadGraph
@@ -380,10 +381,11 @@ func heading() -> Vector3:
 
 func gain_xp(amount: float) -> void:
 	xp += amount
-	var need := 60.0 * level
+	var need := Data.XP_PER_LEVEL * level
 	if xp >= need:
 		xp -= need
 		level += 1
+		level_up_at = Time.get_ticks_msec() / 1000.0
 		var ri := clampi(level / 2, 0, Data.RANKS.size() - 1)
 		if Data.RANKS.find(rank) < ri:
 			rank = Data.RANKS[ri]
