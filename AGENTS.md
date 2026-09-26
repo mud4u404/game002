@@ -74,6 +74,8 @@ GODOT=/path/to/godot tools/shot.sh out.png --skip-setup --shot-hour=21   # 截�
 - 中文字体 `assets/fonts/NotoSansSC-*.ttf` 和图标字体 `MaterialSymbolsRounded-Subset.ttf` 都是**子集**。
 - 新增了字库里没有的汉字或符号，网页版会显示方框；新增图标不在子集里会显示空白。
 - 需要新字 / 新图标时：**不要自己重新生成字体**，在 PR 正文里列出新增的字符和图标名，由 Claude 统一处理。图标名须来自 Material Symbols，并在 `scripts/ui/icons.gd` 中登记。
+- **内容质量永远优先于字库**：写文字时用最自然的说法，**绝不为了"避开缺字"改用生僻或方言化的词**（例如把"说"写成"讲"）。字库覆盖了常用汉字，真缺字就列出来，由 Claude 补。
+- 判断是否缺字，要用字体文件本身核对（`fontTools` 读取 `NotoSansSC-Regular.ttf` 的 cmap），不要凭猜测。
 
 ### 4.3 不要碰的东西
 - `docs/index.*`（网页版构建产物）：只由 Claude 用 `tools/export_web.sh` 更新，PR 里不要包含。
