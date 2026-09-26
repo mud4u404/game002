@@ -655,12 +655,31 @@ func _show_units() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 2)
 	scroll.add_child(list)
-	for u in game.units:
-		var row := UnitRow.new(u, game)
-		row.pressed.connect(func(unit):
-			game.cam.focus_on(unit.global_position)
-			game.select(unit))
-		list.add_child(row)
+	# 按专长分组（Data.SKILLS 键序：调解→处突→交管→突击），空组也显示，提醒缺编
+	for skill_id in Data.SKILLS.keys():
+		var sk: Dictionary = Data.SKILLS[skill_id]
+		var group: Array = []
+		var idle := 0
+		for u in game.units:
+			if u.skill() == skill_id:
+				group.append(u)
+				if u.is_available():
+					idle += 1
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 6)
+		head.add_child(UIKit.icon_label(sk.gi, 14, sk.color))
+		head.add_child(UIKit.label(sk.name, 13, sk.color, "bold"))
+		var hsp := Control.new()
+		hsp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(hsp)
+		head.add_child(UIKit.label("空闲 %d / 共 %d" % [idle, group.size()], 12, UIKit.TEXT_MUTED))
+		list.add_child(head)
+		for u in group:
+			var row := UnitRow.new(u, game)
+			row.pressed.connect(func(unit):
+				game.cam.focus_on(unit.global_position)
+				game.select(unit))
+			list.add_child(row)
 
 
 func _show_stats() -> void:
