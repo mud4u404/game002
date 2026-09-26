@@ -141,14 +141,14 @@ func _metric_color(v: float) -> Color:
 
 
 func _input(event: InputEvent) -> void:
-	# 面板可见时吞掉所有输入，避免 game.gd 在背后继续跑
+	# 面板可见时只吞键盘（避免 game.gd 在背后继续跑），鼠标事件留给按钮与遮罩
 	if not visible:
 		return
 	if event is InputEventKey:
 		var key: InputEventKey = event as InputEventKey
 		if key.pressed and not key.echo and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_SPACE]:
 			close()
-	get_viewport().set_input_as_handled()
+		get_viewport().set_input_as_handled()
 
 
 func _on_day_report(report: Dictionary) -> void:
