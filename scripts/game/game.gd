@@ -83,30 +83,40 @@ func _ready() -> void:
 	if DevTools.args.has("bot"):
 		for kind in ["swat", "patrol", "community", "traffic"]:
 			recruit(kind)
-		# 额外补社区，避免驻点后调解警力被抽空
-		recruit("community")
-		recruit("community")
-		recruit("community")
 		for u in units:
 			if u.info.patrol:
 				u.set_zone(u.facility.center, ZONE_RADIUS.get(u.kind, 150.0) * 1.6, false)
-		# 枫桥式：两组驻点高发区（老城 + 商业街），保留其余调解力量
-		var mediators: Array = units.filter(func(x): return x.skill() == "mediate")
-		if mediators.size() >= 2:
-			var zones: Array = [
-				Rect2(-252, -52, 300, 222),
-				Rect2(-240, -214, 128, 160),
-			]
-			for zi in mini(mini(zones.size(), Data.STATION_MAX), mediators.size()):
-				var spos: Vector3 = Vector3(-102, 0, 59)
+		# 枫桥式：从网格风险挑高发区驻点；**至少留一组社区在编**（--no-station 供 A/B）
+		if not DevTools.args.has("no-station"):
+			var mediators: Array = units.filter(func(x): return x.skill() == "mediate")
+			var max_station: int = 0
+			# 至少留两组社区机动，只驻一组（在编不膨胀的前提下）
+			if mediators.size() >= 2:
+				max_station = 1
+			if max_station > 0:
+				var scored: Array = []
 				for i in ops.cell_edges.size():
 					if ops.cell_edges[i].is_empty():
 						continue
-					var cc: Vector2 = ops.cell_center(i)
-					if (zones[zi] as Rect2).has_point(cc):
-						spos = Vector3(cc.x, 0, cc.y)
-						break
-				mediators[zi].set_stationed(spos)
+					var z: String = city._zone_for(ops.cell_center(i))
+					var f: Array = Ops.ZONE_RISK.get(z, [0.7, 0.8])
+					scored.append({"i": i, "s": ops.base[i] * maxf(f[0], f[1])})
+				scored.sort_custom(func(a, b): return a.s > b.s)
+				var picked: Array = []
+				for e in scored:
+					var cc: Vector2 = ops.cell_center(int(e.i))
+					var ok := true
+					for p in picked:
+						if (cc as Vector2).distance_to(p) < 2.0 * Data.STATION_RADIUS:
+							ok = false
+							break
+					if ok:
+						picked.append(cc)
+						if picked.size() >= max_station:
+							break
+				for zi in mini(picked.size(), max_station):
+					var pc: Vector2 = picked[zi]
+					mediators[zi].set_stationed(Vector3(pc.x, 0, pc.y))
 	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
 		start_shift()
 	_dev_hooks()
@@ -451,6 +461,7 @@ func spawn_incident(force_type := "", guided := false, force_pos: Variant = null
 		if solver != null and rng.randf() < chance:
 			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
 			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
+			GameState.earn(Data.STATION_OK_MONEY)
 			GameState.post(solver.callsign, "%s的纠纷已就地化解。" % spot.get("desc", "辖区"), "good")
 			return null
 	var inc := Incident.new()
