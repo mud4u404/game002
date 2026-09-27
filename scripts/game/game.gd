@@ -211,6 +211,22 @@ func _dev_hooks() -> void:
 				spawn_incident("dispute", false, sunit.station_pos + Vector3(28.0 + k * 20.0, 0, 16.0))
 			select(sunit)
 			cam.focus_on(sunit.station_pos, 320)
+	if a.has("test-station-dispatch"):
+		_opening.clear()
+		var dunit: PoliceUnit = null
+		for u in units:
+			if u.skill() == "mediate":
+				dunit = u
+				break
+		if dunit != null:
+			recruit("community")
+			dunit.set_stationed(dunit.facility.center)
+			# 圈内走失（missing 不会被就地化解）
+			var minc := spawn_incident("missing", false, dunit.station_pos + Vector3(40.0, 0, 22.0))
+			if minc != null:
+				assign(dunit, minc, false)
+				select(dunit)
+				cam.focus_on(dunit.global_position, 300)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -460,6 +476,7 @@ func spawn_incident(force_type := "", guided := false, force_pos: Variant = null
 			chance = 1.0
 		if solver != null and rng.randf() < chance:
 			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
+			GameState.stats.money_earned = int(GameState.stats.get("money_earned", 0)) + int(Data.STATION_OK_MONEY)
 			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
 			GameState.earn(Data.STATION_OK_MONEY)
 			GameState.post(solver.callsign, "%s的纠纷已就地化解。" % spot.get("desc", "辖区"), "good")
@@ -764,6 +781,18 @@ func _auto_dispatch() -> void:
 		for k in miss.keys():
 			var u := best_unit(inc, "" if k == "any" else k)
 			if u:
+				assign(u, inc, false)
+				break
+	# 片警管片：外围派完后，圈内驻点民警接覆盖范围内**仍缺调解**的警情（含走失/盗窃报案；自动派出不撤点）
+	for inc in list:
+		if not inc.is_active():
+			continue
+		var miss2: Dictionary = inc.missing()
+		if not miss2.has("mediate"):
+			continue
+		for u in units:
+			if u.stationed and u.skill() == "mediate" and u.is_available() and u.incident == null \
+					and Vector3(inc.spot.pos.x, 0, inc.spot.pos.z).distance_to(u.station_pos) <= Data.STATION_RADIUS:
 				assign(u, inc, false)
 				break
 
