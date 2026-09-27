@@ -147,6 +147,14 @@ func _dev_hooks() -> void:
 			target.gain_xp(Data.XP_PER_LEVEL * float(target.level))
 			select(target)
 			cam.focus_on(target.global_position, 280)
+	if a.has("test-fraud"):
+		var finc := spawn_incident("fraud_report", true)
+		classify(finc, "fraud_report")
+		if a.has("test-fraud-ok"):
+			do_freeze(finc)
+		await get_tree().create_timer(0.8).timeout
+		select(finc)
+		cam.focus_on(finc.spot.pos, 300)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -408,6 +416,9 @@ func spawn_incident(force_type := "", guided := false) -> Incident:
 		call_incoming.emit(inc)
 	else:
 		GameState.post("110 接警台", "%s，%s。需要：%s。" % [inc.desc(), inc.title(), Data.req_text(inc.req())], "lv%d" % inc.level())
+		# 无来电直接生成的电诈：系统已按真实类型受理，同样开止付窗口
+		if type_id == "fraud_report":
+			_start_freeze(inc)
 	incident_added.emit(inc)
 	_focus_new(inc)
 	return inc
@@ -432,6 +443,17 @@ func _focus_new(inc: Incident) -> void:
 
 
 func _tick_incident(inc: Incident, dm: float) -> void:
+	# 反诈止付倒计时（与派警独立）
+	if inc.freeze_state == "pending" and inc.is_active():
+		inc.freeze_left -= dm
+		if DevTools.args.has("bot") and inc.freeze_left <= Data.FREEZE_WINDOW - 5.0:
+			do_freeze(inc)
+		elif inc.freeze_left <= 0.0:
+			inc.freeze_left = 0.0
+			inc.freeze_state = "late"
+			GameState.adjust(Data.FREEZE_LATE_SAFETY, Data.FREEZE_LATE_OPINION)
+			GameState.post("反诈中心", "资金已被转移，止付失败。", "bad")
+			incident_updated.emit(inc)
 	match inc.state:
 		Incident.S.CALL:
 			if answering != inc:
@@ -603,6 +625,9 @@ func classify(inc: Incident, type_id: String) -> void:
 		return
 	inc.shown_type = type_id
 	inc.state = Incident.S.WAITING
+	# 反诈止付：定性正确且真实类型为电诈时开启窗口；定错（如盗窃）不触发
+	if type_id == "fraud_report" and inc.true_type == "fraud_report":
+		_start_freeze(inc)
 	GameState.post("110 接警台", "%s，研判为「%s」，%s级警情，立即派警。" % [inc.desc(), inc.title(), Data.level_name(inc.level())], "lv%d" % inc.level())
 	inc.refresh_marker()
 	incident_updated.emit(inc)
@@ -611,6 +636,32 @@ func classify(inc: Incident, type_id: String) -> void:
 func cancel_call() -> void:
 	answering = null
 	GameState.slowmo = 1.0
+
+
+## 开启反诈止付窗口（20 游戏分钟）
+func _start_freeze(inc: Incident) -> void:
+	if inc.freeze_state != "":
+		return
+	inc.freeze_state = "pending"
+	inc.freeze_left = Data.FREEZE_WINDOW
+	inc.loss = rng.randi_range(Data.FREEZE_LOSS_MIN, Data.FREEZE_LOSS_MAX)
+	GameState.stats.freeze_total = int(GameState.stats.get("freeze_total", 0)) + 1
+	GameState.post("反诈中心", "研判为电信诈骗，资金链尚未断开。请在 %d 分钟内紧急止付！" % int(Data.FREEZE_WINDOW), "lv2")
+
+
+## 紧急止付：剩余 ≥50% 全额，否则 60%。与派警独立。
+func do_freeze(inc: Incident) -> void:
+	if inc.freeze_state != "pending":
+		return
+	var frac: float = inc.freeze_left / Data.FREEZE_WINDOW
+	var amount: int = int(float(inc.loss) * (1.0 if frac >= 0.5 else 0.6))
+	inc.freeze_state = "ok"
+	inc.loss = amount
+	GameState.stats.freeze_ok = int(GameState.stats.get("freeze_ok", 0)) + 1
+	GameState.stats.freeze_amount = int(GameState.stats.get("freeze_amount", 0)) + amount
+	GameState.adjust(Data.FREEZE_OK_SAFETY, Data.FREEZE_OK_OPINION)
+	GameState.post("反诈中心", "已紧急止付，拦截资金 %s。" % Data.money_str(amount), "good")
+	incident_updated.emit(inc)
 
 
 # ------------------------------------------------------------------ 派警

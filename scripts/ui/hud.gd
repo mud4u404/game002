@@ -456,6 +456,13 @@ func _ctx_incident(inc: Incident) -> void:
 	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_fields["req_state"] = st
 	_right_body.add_child(st)
+	# 反诈止付行：专长需求下方，按钮+倒计时条
+	var fbox := HBoxContainer.new()
+	fbox.add_theme_constant_override("separation", 8)
+	fbox.visible = false
+	_right_body.add_child(fbox)
+	_fields["freeze_box"] = fbox
+	_fields["freeze_sig"] = "-"
 	# 已派警力
 	var units := HFlowContainer.new()
 	units.add_theme_constant_override("h_separation", 6)
@@ -502,6 +509,55 @@ func _req_chip(inc: Incident, k: String, n: int) -> Control:
 		var mark: String = {"done": "check_circle", "enroute": "route", "missing": "cancel"}[state]
 		UIKit.draw_icon(c, mark, Vector2(c.size.x - 13, 15), 14, col))
 	return c
+
+
+## 反诈止付行：pending 时按钮+倒计时条，ok/late 只显示结果
+func _refresh_freeze(inc: Incident) -> void:
+	if not _fields.has("freeze_box"):
+		return
+	var box: Control = _fields["freeze_box"]
+	var st: String = inc.freeze_state
+	if st == "":
+		box.visible = false
+		return
+	box.visible = true
+	if st != _fields["freeze_sig"]:
+		_fields["freeze_sig"] = st
+		for c in box.get_children():
+			c.queue_free()
+		if st == "pending":
+			var btn := UIKit.accent_button("紧急止付", UIKit.AMBER, 13)
+			btn.custom_minimum_size.y = 32
+			btn.pressed.connect(func(): game.do_freeze(inc))
+			box.add_child(btn)
+			var right := VBoxContainer.new()
+			right.add_theme_constant_override("separation", 2)
+			right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var lab := UIKit.label("", 12, UIKit.AMBER, "bold")
+			lab.name = "ftime"
+			right.add_child(lab)
+			var bar := MeterBar.new(UIKit.AMBER, 5.0, 20)
+			bar.name = "fbar"
+			right.add_child(bar)
+			box.add_child(right)
+		elif st == "ok":
+			var okl := UIKit.label("已止付 %s" % Data.money_str(inc.loss), 13, UIKit.GREEN, "bold")
+			okl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			okl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			box.add_child(okl)
+		else:
+			var nol := UIKit.label("止付失败 · 资金已被转移", 13, UIKit.RED, "bold")
+			nol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			nol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			box.add_child(nol)
+	if st == "pending" and box.has_node("ftime"):
+		var frac := clampf(inc.freeze_left / Data.FREEZE_WINDOW, 0.0, 1.0)
+		var col: Color = UIKit.RED if frac < 0.25 else UIKit.AMBER
+		var tl: Label = box.get_node("ftime")
+		tl.text = "剩余 %s" % UIKit.fmt_min(inc.freeze_left)
+		tl.add_theme_color_override("font_color", col)
+		var tb: MeterBar = box.get_node("fbar")
+		tb.set_value(frac, col)
 
 
 func _cand_row(inc: Incident, e: Dictionary) -> Control:
@@ -800,6 +856,7 @@ func _refresh_right() -> void:
 		if _fields.has("req_box"):
 			for c in _fields["req_box"].get_children():
 				c.queue_redraw()
+		_refresh_freeze(inc)
 		var miss: Dictionary = inc.missing()
 		var msg := ""
 		if inc.state == Incident.S.CALL:

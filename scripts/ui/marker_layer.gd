@@ -129,6 +129,11 @@ func _draw_incident(inc: Incident, t: float, zoom: float, vr: Rect2) -> void:
 		var frac := clampf(inc.deadline / float(inc.true_data().deadline), 0.0, 1.0)
 		var rc := Color.WHITE if frac > 0.3 else (UIKit.RED if fmod(t * 3.0, 1.0) < 0.5 else Color.WHITE)
 		UIKit.draw_hex_progress(self, p, R + 5, frac, rc, 2.5)
+	# 反诈止付：外圈琥珀色倒计时弧（不足 25% 转红）
+	if inc.freeze_state == "pending":
+		var fz := clampf(inc.freeze_left / Data.FREEZE_WINDOW, 0.0, 1.0)
+		var fc: Color = UIKit.RED if fz < 0.25 else UIKit.AMBER
+		UIKit.draw_hex_progress(self, p, R + 9, fz, fc, 2.5)
 	# 专长需求小图标：红 = 缺，青 = 在途，绿 = 到场
 	if active and not calling and inc.state != Incident.S.DONE:
 		var r := inc.req()

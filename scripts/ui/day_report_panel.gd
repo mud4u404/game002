@@ -17,6 +17,7 @@ var _tiles: Dictionary = {}
 var _verdict_box: PanelContainer
 var _verdict_label: Label
 var _verdict_sb: StyleBoxFlat
+var _freeze_line: Label
 var _snapshot: Dictionary = {}
 var _was_paused := false
 var _prev_speed := 1.0
@@ -78,6 +79,9 @@ func _build_tiles(parent: VBoxContainer) -> void:
 		parent.add_child(h)
 		for it in row:
 			_tile(h, it[0], it[1], it[2])
+	_freeze_line = UIKit.label("止付 —", 12, UIKit.TEXT_MUTED)
+	_freeze_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	parent.add_child(_freeze_line)
 
 
 func _tile(parent: HBoxContainer, icon_name: String, tip: String, key: String) -> void:
@@ -120,6 +124,9 @@ func _snapshot_current() -> Dictionary:
 		"calls_total": int(GameState.stats.get("calls_total", 0)),
 		"caught": int(GameState.stats.get("caught", 0)),
 		"escaped": int(GameState.stats.get("escaped", 0)),
+		"freeze_total": int(GameState.stats.get("freeze_total", 0)),
+		"freeze_ok": int(GameState.stats.get("freeze_ok", 0)),
+		"freeze_amount": int(GameState.stats.get("freeze_amount", 0)),
 	}
 
 
@@ -161,6 +168,9 @@ func _on_day_report(report: Dictionary) -> void:
 	var resp_n: int = int(cur.get("resp_n", 0)) - int(_snapshot.get("resp_n", 0))
 	var caught: int = int(cur.get("caught", 0)) - int(_snapshot.get("caught", 0))
 	var escaped: int = int(cur.get("escaped", 0)) - int(_snapshot.get("escaped", 0))
+	var fz_total: int = int(cur.get("freeze_total", 0)) - int(_snapshot.get("freeze_total", 0))
+	var fz_ok: int = int(cur.get("freeze_ok", 0)) - int(_snapshot.get("freeze_ok", 0))
+	var fz_amt: int = int(cur.get("freeze_amount", 0)) - int(_snapshot.get("freeze_amount", 0))
 	_snapshot = cur
 	# 模拟（headless + quit-frames）跳过 UI 与暂停
 	if DevTools.args.has("quit-frames"):
@@ -176,6 +186,9 @@ func _on_day_report(report: Dictionary) -> void:
 	_set_tile("safety", "%.0f" % GameState.safety, _metric_color(GameState.safety))
 	_set_tile("opinion", "%.0f" % GameState.opinion, _metric_color(GameState.opinion))
 	_set_tile("perfect", str(perfect))
+	_freeze_line.text = "止付 %d/%d · 拦截 %s" % [fz_ok, fz_total, Data.money_str(fz_amt)]
+	_freeze_line.add_theme_color_override("font_color",
+		UIKit.GREEN if fz_ok > 0 else (UIKit.RED if fz_total > 0 else UIKit.TEXT_MUTED))
 	# 评价胶囊徽章
 	var v_color: Color = UIKit.AMBER
 	var v_text: String = "平稳"
@@ -219,6 +232,9 @@ func show_for_test() -> void:
 	GameState.stats.calls_ok = int(GameState.stats.get("calls_ok", 0)) + 4
 	GameState.stats.calls_total = int(GameState.stats.get("calls_total", 0)) + 5
 	GameState.stats.caught = int(GameState.stats.get("caught", 0)) + 1
+	GameState.stats.freeze_total = int(GameState.stats.get("freeze_total", 0)) + 3
+	GameState.stats.freeze_ok = int(GameState.stats.get("freeze_ok", 0)) + 2
+	GameState.stats.freeze_amount = int(GameState.stats.get("freeze_amount", 0)) + 86000
 	GameState.safety = 68.0
 	GameState.opinion = 72.0
 	var report: Dictionary = {"day": GameState.day(), "grant": 180000.0, "safety": GameState.safety, "opinion": GameState.opinion,
