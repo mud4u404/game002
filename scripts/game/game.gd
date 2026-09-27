@@ -50,7 +50,7 @@ func _ready() -> void:
 	GameState.reset()
 	if DevTools.args.has("shot-hour"):
 		GameState.minutes = float(DevTools.args["shot-hour"]) * 60.0
-	rng.seed = SEED + 1
+	rng.seed = SEED + 1 + int(DevTools.args.get("seed", "0"))  # --seed=N：换随机种子做平衡对照
 	city = CityMap.new()
 	add_child(city)
 	env = EnvironmentRig.new()

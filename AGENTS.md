@@ -39,6 +39,7 @@ GODOT=/path/to/godot tools/shot.sh out.png --skip-setup --shot-hour=21   # 截�
 
 - 改了界面：PR 里**必须附截图**（`tools/shot.sh`，可配合 `--test-busy`、`--test-call`、`--test-suspect`、`--layers=heat,reach` 等参数，见 `scripts/game/game.gd` 的 `_dev_hooks`）。
 - 改了数值或玩法：PR 里贴 `tools/sim.sh` 修改前后的输出对比。
+- 平衡验收用**多种子 A/B**，不要只看单次模拟（单一种子的波动可达 ±5）：`GODOT=... tools/sim_ab.sh "<A 组参数>" "<B 组参数>" 30000`，默认种子 11/22/33，直接输出均值对比表。`tools/sim.sh` 也可追加参数，如 `tools/sim.sh 30000 --seed=22`。
 - 在编辑器里运行：打开 `project.godot`，F5。
 
 ---
