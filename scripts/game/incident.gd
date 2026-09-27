@@ -26,6 +26,10 @@ var ring_mat: ShaderMaterial
 var beam_mat: ShaderMaterial
 var escalations := 0
 var suspect = null            # Suspect（抢劫等警情的逃逸嫌疑人）
+# 反诈止付
+var freeze_state := ""        # "" / "pending" / "ok" / "late"
+var freeze_left := 0.0        # 止付窗口剩余（游戏分钟）
+var loss := 0                 # 被骗金额（元）；止付成功后为实际拦截额
 
 
 func data() -> Dictionary:

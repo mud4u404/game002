@@ -8,6 +8,15 @@ const MIN_PER_SEC := 0.5  # 1× 倍速下，每现实秒推进的游戏分钟
 const LEVEL_BONUS := 0.08   # 每升一级，处置效率 +8%
 const XP_PER_LEVEL := 60.0  # 升级所需经验 = XP_PER_LEVEL × 当前等级
 
+# ---------------------------------------------------------------- 反诈止付
+const FREEZE_WINDOW := 20.0        # 止付窗口（游戏分钟）
+const FREEZE_LOSS_MIN := 30000     # 被骗金额下限（元）
+const FREEZE_LOSS_MAX := 200000    # 被骗金额上限（元）
+const FREEZE_OK_SAFETY := 1.5      # 止付成功安全感
+const FREEZE_OK_OPINION := 2.5     # 止付成功舆情
+const FREEZE_LATE_SAFETY := -2.5   # 止付失败安全感
+const FREEZE_LATE_OPINION := -3.5  # 止付失败舆情
+
 # ---------------------------------------------------------------- 单位
 const UNIT_TYPES := {
 	"community": {
