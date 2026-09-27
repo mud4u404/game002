@@ -193,7 +193,8 @@ func return_to_base() -> void:
 
 func start_patrol() -> void:
 	if stationed:
-		state = State.IDLE
+		# 驻点：被打断（轮休/处置结束）后回到驻点停下
+		move_to(station_pos)
 		return
 	incident = null
 	chase_target = null

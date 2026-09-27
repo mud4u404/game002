@@ -220,12 +220,13 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 		var ltxt := str(u.level)
 		var lsz := UIKit.font("bold").get_string_size(ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(UIKit.font("bold"), bp + Vector2(-lsz.x * 0.5, fs * 0.36), ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
-	# 枫桥式驻点：青色虚线覆盖圆 + 卡片小标记
+	# 枫桥式驻点：青色虚线覆盖圆（圆心=station_pos，不跟车跑）+ 卡片小标记
 	if u.stationed:
+		var sp2 := _p(u.station_pos)
 		var sr: float = _sr(u.station_pos, Data.STATION_RADIUS)
 		for k in 36:
 			if k % 2 == 0:
-				draw_arc(p, maxf(sr, 18.0), TAU * k / 36.0, TAU * (k + 1) / 36.0, 3, Color(0.15, 0.85, 0.95, 0.75), 1.6, true)
+				draw_arc(sp2, maxf(sr, 18.0), TAU * k / 36.0, TAU * (k + 1) / 36.0, 3, Color(0.15, 0.85, 0.95, 0.75), 1.6, true)
 		UIKit.draw_icon(self, "local_police", Vector2(card.position.x + 10.0, card.position.y - 10.0), 12, UIKit.CYAN)
 	if sel or hv or zoom < 300.0:
 		_pill(u.callsign, Vector2(p.x, card.position.y - 18 * scale), Color.WHITE, 11)

@@ -33,6 +33,7 @@ var base: PackedFloat32Array
 var memory: PackedFloat32Array
 var presence: PackedFloat32Array
 var risk: PackedFloat32Array
+var pick_w: PackedFloat32Array   # 生成权重：不乘驻点风险倍率，保证覆盖区内仍会「尝试」发案，再由就地化解拦截
 var cell_edges: Array = []        # cell -> Array[int]
 var suppress := 1.0               # 当前发案抑制系数（0.45~1）
 var seen_rate := 0.0              # 见警率：人口加权后有警力可见的网格占比
@@ -63,6 +64,7 @@ func _init(p_game: Game) -> void:
 	memory.resize(n)
 	presence.resize(n)
 	risk.resize(n)
+	pick_w.resize(n)
 	cell_edges.resize(n)
 	for i in n:
 		cell_edges[i] = []
@@ -148,13 +150,15 @@ func _update_grid(dm: float) -> void:
 		presence[i] = lerpf(presence[i], minf(now[i], 2.0), a)
 		memory[i] *= decay
 		var r0 := base[i] * _zone_factor(i, night) * (1.0 + memory[i] * 0.45)
-		# 枫桥式驻点：覆盖网格内发案风险降低
+		var r0s := r0
+		# 枫桥式驻点：覆盖网格内热力发案风险降低（预防）
 		if game != null:
 			var cc := cell_center(i)
 			for u in game.units:
 				if u.stationed and cc.distance_to(Vector2(u.station_pos.x, u.station_pos.z)) <= Data.STATION_RADIUS:
 					r0 *= Data.STATION_RISK_MULT
 					break
+		pick_w[i] = r0s / (1.0 + presence[i] * 1.8)
 		risk[i] = r0 / (1.0 + presence[i] * 1.8)
 		total += risk[i]
 		raw += r0
@@ -165,16 +169,16 @@ func _update_grid(dm: float) -> void:
 	seen_rate = seen_w / maxf(all_w, 0.001)
 
 
-## 按风险加权抽取警情地点
+## 按风险加权抽取警情地点（生成用 pick_w；驻点风险倍率只影响热力，生成后由就地化解拦截）
 func pick_spot(rng: RandomNumberGenerator) -> Dictionary:
 	var total := 0.0
-	for r in risk:
+	for r in pick_w:
 		total += r
 	if total <= 0.0:
 		return city.random_incident_spot(rng)
 	var x := rng.randf() * total
-	for i in risk.size():
-		x -= risk[i]
+	for i in pick_w.size():
+		x -= pick_w[i]
 		if x <= 0.0:
 			var es: Array = cell_edges[i]
 			if es.is_empty():

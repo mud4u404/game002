@@ -83,14 +83,30 @@ func _ready() -> void:
 	if DevTools.args.has("bot"):
 		for kind in ["swat", "patrol", "community", "traffic"]:
 			recruit(kind)
+		# 额外补社区，避免驻点后调解警力被抽空
+		recruit("community")
+		recruit("community")
+		recruit("community")
 		for u in units:
 			if u.info.patrol:
 				u.set_zone(u.facility.center, ZONE_RADIUS.get(u.kind, 150.0) * 1.6, false)
-		# 枫桥式：一组社区民警驻点在派出所附近高发区
-		for u in units:
-			if u.skill() == "mediate":
-				u.set_stationed(u.facility.center)
-				break
+		# 枫桥式：两组驻点高发区（老城 + 商业街），保留其余调解力量
+		var mediators: Array = units.filter(func(x): return x.skill() == "mediate")
+		if mediators.size() >= 2:
+			var zones: Array = [
+				Rect2(-252, -52, 300, 222),
+				Rect2(-240, -214, 128, 160),
+			]
+			for zi in mini(mini(zones.size(), Data.STATION_MAX), mediators.size()):
+				var spos: Vector3 = Vector3(-102, 0, 59)
+				for i in ops.cell_edges.size():
+					if ops.cell_edges[i].is_empty():
+						continue
+					var cc: Vector2 = ops.cell_center(i)
+					if (zones[zi] as Rect2).has_point(cc):
+						spos = Vector3(cc.x, 0, cc.y)
+						break
+				mediators[zi].set_stationed(spos)
 	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
 		start_shift()
 	_dev_hooks()
@@ -177,13 +193,12 @@ func _dev_hooks() -> void:
 				sunit = u
 				break
 		if sunit != null:
+			# 补一组社区，避免抽空调解
+			recruit("community")
 			sunit.set_stationed(sunit.facility.center)
-			# 覆盖范围内连生 3 起纠纷；第一起固定就地化解，保证截图能看到电台
-			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
-			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
-			GameState.post(sunit.callsign, "%s的纠纷已就地化解。" % "驻点覆盖区", "good")
-			spawn_incident("dispute", true)
-			spawn_incident("dispute", true)
+			# 真实路径：覆盖范围内连生 3 起纠纷（test-station 时化解概率=1）
+			for k in 3:
+				spawn_incident("dispute", false, sunit.station_pos + Vector3(28.0 + k * 20.0, 0, 16.0))
 			select(sunit)
 			cam.focus_on(sunit.station_pos, 320)
 	if a.has("test-report"):
@@ -388,7 +403,7 @@ func _process(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ 警情
-func spawn_incident(force_type := "", guided := false) -> Incident:
+func spawn_incident(force_type := "", guided := false, force_pos: Variant = null) -> Incident:
 	var hour := GameState.hour()
 	var type_id := force_type
 	if type_id == "":
@@ -407,23 +422,33 @@ func spawn_incident(force_type := "", guided := false) -> Incident:
 		if type_id == "":
 			type_id = "dispute"
 	var spot := {}
-	for tries in 12:
-		spot = ops.pick_spot(rng) if force_type == "" else city.random_incident_spot(rng)
-		var ok := true
-		for other in incidents:
-			if other.is_active() and other.spot.pos.distance_to(spot.pos) < 50.0:
-				ok = false
+	if force_pos != null and force_pos is Vector3:
+		# 指定地点：用最近路段的结构，但位置钉在 force_pos（测试/就地化解验证）
+		var near: Dictionary = city.graph.nearest_edge_point(force_pos)
+		spot = city.spot_on_edge(near.edge, rng)
+		spot.pos = force_pos
+		spot.road_center = force_pos
+	else:
+		for tries in 12:
+			spot = ops.pick_spot(rng) if force_type == "" else city.random_incident_spot(rng)
+			var ok := true
+			for other in incidents:
+				if other.is_active() and other.spot.pos.distance_to(spot.pos) < 50.0:
+					ok = false
+					break
+			if ok:
 				break
-		if ok:
-			break
-	# 枫桥式：纠纷落入驻点覆盖且判定成功，则就地化解，不生成警情
-	if type_id in Data.STATION_TYPES:
+	# 枫桥式：纠纷落入驻点覆盖且判定成功，则就地化解（guided 开场教学不吞）
+	if not guided and type_id in Data.STATION_TYPES:
 		var solver: PoliceUnit = null
 		for u in units:
 			if u.stationed and Vector3(spot.pos.x, 0, spot.pos.z).distance_to(u.station_pos) <= Data.STATION_RADIUS:
 				solver = u
 				break
-		if solver != null and rng.randf() < Data.STATION_RESOLVE_CHANCE:
+		var chance: float = Data.STATION_RESOLVE_CHANCE
+		if DevTools.args.has("test-station"):
+			chance = 1.0
+		if solver != null and rng.randf() < chance:
 			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
 			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
 			GameState.post(solver.callsign, "%s的纠纷已就地化解。" % spot.get("desc", "辖区"), "good")
