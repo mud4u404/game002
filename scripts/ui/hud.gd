@@ -946,13 +946,17 @@ func _refresh_right() -> void:
 			_setf("lv_eff", "处置效率 +%d%%" % int((u.level - 1) * Data.LEVEL_BONUS * 100.0), UIKit.GREEN)
 		var task := "暂无任务"
 		if u.incident:
-			task = u.incident.title() + " · " + u.incident.desc()
+			# 驻点单位圈内出警
+			if u.stationed:
+				task = "驻点出警 · " + u.incident.title()
+			else:
+				task = u.incident.title() + " · " + u.incident.desc()
 		elif u.chase_target != null:
 			task = "追缉抢劫嫌疑人"
-		elif u.zone_set:
-			task = "巡区巡逻 · 半径 %d 米（右键路面可改）" % int(u.patrol_radius)
 		elif u.stationed:
 			task = "驻点中 · 纠纷就地化解"
+		elif u.zone_set:
+			task = "巡区巡逻 · 半径 %d 米（右键路面可改）" % int(u.patrol_radius)
 		elif u.info.patrol:
 			task = "驻地待命 · 右键路面划定巡区"
 		else:
