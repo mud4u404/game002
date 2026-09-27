@@ -28,6 +28,9 @@ func _init(p_game: Game) -> void:
 	var heat := UIKit.label("地图上的橙红色区域是高发片区（老城、滨江夜市）。", 12, UIKit.TEXT_MUTED)
 	heat.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.add_child(heat)
+	# 大型活动卡片
+	if game.city_event != null:
+		b.add_child(_event_card(game.city_event))
 
 	# ② 组建
 	b.add_child(_divider())
@@ -182,3 +185,33 @@ func _set_done(n: int, v: bool) -> void:
 	if _step.get(n, false) != v:
 		_step[n] = v
 		(_step[str(n)] as Control).queue_redraw()
+
+
+func _event_card(ev: CityEvent) -> Control:
+	var pc := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.1, 0.02, 0.65)
+	sb.border_color = UIKit.AMBER
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(8)
+	pc.add_theme_stylebox_override("panel", sb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	pc.add_child(v)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	h.add_child(UIKit.icon_label("event", 15, UIKit.AMBER))
+	h.add_child(UIKit.label(ev.name(), 13, UIKit.AMBER, "bold"))
+	h.add_child(UIKit.label("%d:00–%d:00" % [int(ev.start_hour()), int(ev.end_hour())], 12, UIKit.TEXT_MUTED))
+	v.add_child(h)
+	var chips := HBoxContainer.new()
+	chips.add_theme_constant_override("separation", 6)
+	for k in ev.need().keys():
+		var sk: Dictionary = Data.SKILLS.get(String(k), {})
+		var need_n := int(ev.need()[k])
+		var have_n := ev.have(String(k))
+		var c := UIKit.label("%s %d/%d" % [String(sk.get("name", k)), have_n, need_n], 11, Color(sk.get("color", UIKit.TEXT)))
+		chips.add_child(c)
+	v.add_child(chips)
+	return pc

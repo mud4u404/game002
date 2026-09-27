@@ -19,7 +19,7 @@ wait
 python3 - "$OUT" $SEEDS <<'PY'
 import re, sys, os
 out, seeds = sys.argv[1], sys.argv[2:]
-keys = ["money", "safety", "opinion", "total", "failed", "station"]
+keys = ["money", "safety", "opinion", "total", "failed", "station", "event"]
 avg = {}
 for g in ("A", "B"):
 	rows = []

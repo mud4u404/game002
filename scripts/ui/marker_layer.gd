@@ -220,6 +220,17 @@ func _draw_unit(u: PoliceUnit, t: float, zoom: float, vr: Rect2) -> void:
 		var ltxt := str(u.level)
 		var lsz := UIKit.font("bold").get_string_size(ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(UIKit.font("bold"), bp + Vector2(-lsz.x * 0.5, fs * 0.36), ltxt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+	# 大型活动区：琥珀虚线圆（呼吸）
+	if game.city_event != null and not game.city_event.settled:
+		var ev := game.city_event
+		var ep := _p(ev.pos)
+		var er: float = _sr(ev.pos, Data.EVENT_RADIUS)
+		var br := 0.85 + 0.15 * sin(t * 2.2)
+		var ec := Color(1.0, 0.72, 0.15, 0.55 * br)
+		for k in 36:
+			if k % 2 == 0:
+				draw_arc(ep, er, TAU * k / 36.0, TAU * (k + 1) / 36.0, 3, ec, 1.8, true)
+		_pill(ev.name(), ep + Vector2(0, -er - 14), UIKit.AMBER, 11)
 	# 枫桥式驻点：青色虚线覆盖圆（圆心=station_pos，不跟车跑）+ 卡片小标记
 	if u.stationed:
 		var sp2 := _p(u.station_pos)

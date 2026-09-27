@@ -703,6 +703,14 @@ func _ctx_unit(u: PoliceUnit) -> void:
 			game.station_unit(u)
 			_ctx_unit(u))
 		btns.append(stb)
+	# 大型活动安保
+	if game.city_event != null and not game.city_event.settled:
+		var eg := UIKit.accent_button("撤回" if u.on_event else "派往安保", UIKit.AMBER if u.on_event else UIKit.ACCENT, 13)
+		eg.custom_minimum_size.y = 34
+		eg.pressed.connect(func():
+			game.event_guard(u)
+			_ctx_unit(u))
+		btns.append(eg)
 	var rb := UIKit.button("回所待命", 13)
 	rb.custom_minimum_size.y = 34
 	rb.pressed.connect(func(): game.recall(u))
@@ -953,6 +961,8 @@ func _refresh_right() -> void:
 				task = u.incident.title() + " · " + u.incident.desc()
 		elif u.chase_target != null:
 			task = "追缉抢劫嫌疑人"
+		elif u.on_event:
+			task = "活动安保 · " + (game.city_event.name() if game.city_event else "")
 		elif u.stationed:
 			task = "驻点中 · 纠纷就地化解"
 		elif u.zone_set:

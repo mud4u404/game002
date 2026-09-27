@@ -18,6 +18,7 @@ var _verdict_box: PanelContainer
 var _verdict_label: Label
 var _verdict_sb: StyleBoxFlat
 var _freeze_line: Label
+var _event_line: Label
 var _snapshot: Dictionary = {}
 var _was_paused := false
 var _prev_speed := 1.0
@@ -80,8 +81,11 @@ func _build_tiles(parent: VBoxContainer) -> void:
 		for it in row:
 			_tile(h, it[0], it[1], it[2])
 	_freeze_line = UIKit.label("止付 —", 12, UIKit.TEXT_MUTED)
+	_event_line = UIKit.label("安保 —", 12, UIKit.TEXT_MUTED)
+	_event_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_freeze_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	parent.add_child(_freeze_line)
+	parent.add_child(_event_line)
 
 
 func _tile(parent: HBoxContainer, icon_name: String, tip: String, key: String) -> void:
@@ -127,6 +131,8 @@ func _snapshot_current() -> Dictionary:
 		"freeze_total": int(GameState.stats.get("freeze_total", 0)),
 		"freeze_ok": int(GameState.stats.get("freeze_ok", 0)),
 		"freeze_amount": int(GameState.stats.get("freeze_amount", 0)),
+		"event_total": int(GameState.stats.get("event_total", 0)),
+		"event_ok": int(GameState.stats.get("event_ok", 0)),
 	}
 
 
@@ -187,6 +193,9 @@ func _on_day_report(report: Dictionary) -> void:
 	_set_tile("opinion", "%.0f" % GameState.opinion, _metric_color(GameState.opinion))
 	_set_tile("perfect", str(perfect))
 	_freeze_line.text = "止付 %d/%d · 拦截 %s" % [fz_ok, fz_total, Data.money_str(fz_amt)]
+	var ev_t: int = int(cur.get("event_total", 0)) - int(_snapshot.get("event_total", 0))
+	var ev_ok: int = int(cur.get("event_ok", 0)) - int(_snapshot.get("event_ok", 0))
+	_event_line.text = "安保 %s" % ("—" if ev_t <= 0 else ("圆满" if ev_ok > 0 else "失当"))
 	_freeze_line.add_theme_color_override("font_color",
 		UIKit.GREEN if fz_ok > 0 else (UIKit.RED if fz_total > 0 else UIKit.TEXT_MUTED))
 	# 评价胶囊徽章
