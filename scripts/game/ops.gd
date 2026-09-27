@@ -158,7 +158,7 @@ func _update_grid(dm: float) -> void:
 	seen_rate = seen_w / maxf(all_w, 0.001)
 
 
-## 按风险加权抽取警情地点
+## 按风险加权抽取警情地点（驻点不改发案权重，预防只靠就地化解）
 func pick_spot(rng: RandomNumberGenerator) -> Dictionary:
 	var total := 0.0
 	for r in risk:

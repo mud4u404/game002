@@ -30,10 +30,10 @@ func _process(_delta: float) -> void:
 		if _count % int(args.get("print-every", "600")) == 0:
 			print("[t] ", Time.get_ticks_msec())
 			var st := GameState.stats
-			print("[sim] day %d %s money=%d safety=%.1f opinion=%.1f total=%d resolved=%d failed=%d perfect=%d calls=%d/%d caught=%d escaped=%d freeze=%d/%d" % [
+			print("[sim] day %d %s money=%d safety=%.1f opinion=%.1f total=%d resolved=%d failed=%d perfect=%d calls=%d/%d caught=%d escaped=%d freeze=%d/%d station=%d" % [
 				GameState.day(), GameState.clock_str(), GameState.money, GameState.safety, GameState.opinion,
 				st.total, st.resolved, st.failed, st.perfect, st.calls_ok, st.calls_total, int(st.get("caught", 0)), int(st.get("escaped", 0)),
-				int(st.get("freeze_ok", 0)), int(st.get("freeze_total", 0))])
+				int(st.get("freeze_ok", 0)), int(st.get("freeze_total", 0)), int(st.get("station_solved", 0))])
 			var g = get_tree().current_scene
 			if g is Game and g.ops:
 				print("  ops: seen=%.2f cover5=%.2f suppress=%.2f suspects=%d cps=%d" % [g.ops.seen_rate, g.ops.cover5, g.ops.suppress, g.ops.suspects.size(), g.ops.checkpoints.size()])

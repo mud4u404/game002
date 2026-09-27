@@ -17,6 +17,15 @@ const FREEZE_OK_OPINION := 2.5     # 止付成功舆情
 const FREEZE_LATE_SAFETY := -2.5   # 止付失败安全感
 const FREEZE_LATE_OPINION := -3.5  # 止付失败舆情
 
+# ---------------------------------------------------------------- 枫桥式社区警务
+const STATION_RADIUS := 180.0                                    # 驻点覆盖半径（米）；130 时两天化解不足 5 次，按验收调至 180
+const STATION_TYPES := ["dispute", "crowd_dispute"]              # 可就地化解的纠纷
+const STATION_RESOLVE_CHANCE := 0.75                             # 就地化解概率（0.6 在单驻点下两天不足 5 次，按验收调至 0.75）
+const STATION_MAX := 2                                           # 同时驻点上限
+const STATION_OK_SAFETY := 0.4                                   # 就地化解安全感
+const STATION_OK_OPINION := 0.6                                  # 就地化解舆情
+const STATION_OK_MONEY := 2500.0                                 # 就地化解小额奖励（元）
+
 # ---------------------------------------------------------------- 单位
 const UNIT_TYPES := {
 	"community": {

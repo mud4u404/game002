@@ -86,6 +86,37 @@ func _ready() -> void:
 		for u in units:
 			if u.info.patrol:
 				u.set_zone(u.facility.center, ZONE_RADIUS.get(u.kind, 150.0) * 1.6, false)
+		# 枫桥式：从网格风险挑高发区驻点；**至少留一组社区在编**（--no-station 供 A/B）
+		if not DevTools.args.has("no-station"):
+			var mediators: Array = units.filter(func(x): return x.skill() == "mediate")
+			var max_station: int = 0
+			# 至少留两组社区机动，只驻一组（在编不膨胀的前提下）
+			if mediators.size() >= 2:
+				max_station = 1
+			if max_station > 0:
+				var scored: Array = []
+				for i in ops.cell_edges.size():
+					if ops.cell_edges[i].is_empty():
+						continue
+					var z: String = city._zone_for(ops.cell_center(i))
+					var f: Array = Ops.ZONE_RISK.get(z, [0.7, 0.8])
+					scored.append({"i": i, "s": ops.base[i] * maxf(f[0], f[1])})
+				scored.sort_custom(func(a, b): return a.s > b.s)
+				var picked: Array = []
+				for e in scored:
+					var cc: Vector2 = ops.cell_center(int(e.i))
+					var ok := true
+					for p in picked:
+						if (cc as Vector2).distance_to(p) < 2.0 * Data.STATION_RADIUS:
+							ok = false
+							break
+					if ok:
+						picked.append(cc)
+						if picked.size() >= max_station:
+							break
+				for zi in mini(picked.size(), max_station):
+					var pc: Vector2 = picked[zi]
+					mediators[zi].set_stationed(Vector3(pc.x, 0, pc.y))
 	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
 		start_shift()
 	_dev_hooks()
@@ -121,6 +152,8 @@ func _dev_hooks() -> void:
 			spawn_incident()
 	if a.has("test-call"):
 		var inc := spawn_incident("armed")
+		if inc == null:
+			return
 		await get_tree().create_timer(0.5).timeout
 		hud.open_call(inc)
 		await get_tree().create_timer(1.0).timeout
@@ -151,6 +184,8 @@ func _dev_hooks() -> void:
 		# 跳过开场教学警情，避免 _focus_new 抢走选中，保证任何人 --test-fraud 都能复现
 		_opening.clear()
 		var finc := spawn_incident("fraud_report", true)
+		if finc == null:
+			return
 		classify(finc, "fraud_report")
 		if a.has("test-fraud-ok"):
 			do_freeze(finc)
@@ -160,6 +195,22 @@ func _dev_hooks() -> void:
 		await get_tree().create_timer(0.8).timeout
 		select(finc)
 		cam.focus_on(finc.spot.pos, 300)
+	if a.has("test-station"):
+		_opening.clear()
+		var sunit: PoliceUnit = null
+		for u in units:
+			if u.skill() == "mediate":
+				sunit = u
+				break
+		if sunit != null:
+			# 补一组社区，避免抽空调解
+			recruit("community")
+			sunit.set_stationed(sunit.facility.center)
+			# 真实路径：覆盖范围内连生 3 起纠纷（test-station 时化解概率=1）
+			for k in 3:
+				spawn_incident("dispute", false, sunit.station_pos + Vector3(28.0 + k * 20.0, 0, 16.0))
+			select(sunit)
+			cam.focus_on(sunit.station_pos, 320)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -168,6 +219,8 @@ func _dev_hooks() -> void:
 			hud.toggle_layer(id)
 	if a.has("test-suspect"):
 		var inc := spawn_incident("robbery")
+		if inc == null:
+			return
 		if inc.state == Incident.S.CALL:
 			classify(inc, "robbery")
 		await get_tree().create_timer(float(a.get("suspect-wait", "4"))).timeout
@@ -360,7 +413,7 @@ func _process(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ 警情
-func spawn_incident(force_type := "", guided := false) -> Incident:
+func spawn_incident(force_type := "", guided := false, force_pos: Variant = null) -> Incident:
 	var hour := GameState.hour()
 	var type_id := force_type
 	if type_id == "":
@@ -379,15 +432,38 @@ func spawn_incident(force_type := "", guided := false) -> Incident:
 		if type_id == "":
 			type_id = "dispute"
 	var spot := {}
-	for tries in 12:
-		spot = ops.pick_spot(rng) if force_type == "" else city.random_incident_spot(rng)
-		var ok := true
-		for other in incidents:
-			if other.is_active() and other.spot.pos.distance_to(spot.pos) < 50.0:
-				ok = false
+	if force_pos != null and force_pos is Vector3:
+		# 指定地点：用最近路段的结构，但位置钉在 force_pos（测试/就地化解验证）
+		var near: Dictionary = city.graph.nearest_edge_point(force_pos)
+		spot = city.spot_on_edge(near.edge, rng)
+		spot.pos = force_pos
+		spot.road_center = force_pos
+	else:
+		for tries in 12:
+			spot = ops.pick_spot(rng) if force_type == "" else city.random_incident_spot(rng)
+			var ok := true
+			for other in incidents:
+				if other.is_active() and other.spot.pos.distance_to(spot.pos) < 50.0:
+					ok = false
+					break
+			if ok:
 				break
-		if ok:
-			break
+	# 枫桥式：纠纷落入驻点覆盖且判定成功，则就地化解（guided 开场教学不吞）
+	if not guided and type_id in Data.STATION_TYPES:
+		var solver: PoliceUnit = null
+		for u in units:
+			if u.stationed and Vector3(spot.pos.x, 0, spot.pos.z).distance_to(u.station_pos) <= Data.STATION_RADIUS:
+				solver = u
+				break
+		var chance: float = Data.STATION_RESOLVE_CHANCE
+		if DevTools.args.has("test-station"):
+			chance = 1.0
+		if solver != null and rng.randf() < chance:
+			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
+			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
+			GameState.earn(Data.STATION_OK_MONEY)
+			GameState.post(solver.callsign, "%s的纠纷已就地化解。" % spot.get("desc", "辖区"), "good")
+			return null
 	var inc := Incident.new()
 	inc.id = _next_inc
 	_next_inc += 1
@@ -696,7 +772,7 @@ func best_unit(inc: Incident, skill := "") -> PoliceUnit:
 	var best: PoliceUnit = null
 	var best_score := INF
 	for u in units:
-		if not u.is_available() or u.incident != null:
+		if not u.is_available() or u.incident != null or u.stationed:
 			continue
 		if skill != "" and u.skill() != skill:
 			continue
@@ -715,7 +791,7 @@ func candidates(inc: Incident, limit := 6) -> Array:
 		if not u.is_available() or u.incident == inc:
 			continue
 		var fit := miss.has(u.skill()) or miss.has("any")
-		out.append({"unit": u, "eta": u.eta_to(inc.spot.road_center, inc.spot.edge), "fit": fit})
+		out.append({"unit": u, "eta": u.eta_to(inc.spot.road_center, inc.spot.edge), "fit": fit, "stationed": u.stationed})
 	out.sort_custom(func(a, b):
 		if a.fit != b.fit:
 			return a.fit
@@ -726,6 +802,10 @@ func candidates(inc: Incident, limit := 6) -> Array:
 func assign(u: PoliceUnit, inc: Incident, manual: bool) -> void:
 	if u.incident == inc:
 		return
+	if manual and u.stationed:
+		# 手动派警：解除驻点
+		u.clear_station()
+		units_changed.emit()
 	if u.incident != null:
 		u.incident.unassign(u)
 	inc.units.append(u)
@@ -759,6 +839,8 @@ func _on_unit_arrived(u: PoliceUnit) -> void:
 
 
 func recall(u: PoliceUnit) -> void:
+	if u.stationed:
+		u.clear_station()
 	if u.incident:
 		u.incident.unassign(u)
 	u.clear_zone()
@@ -770,12 +852,39 @@ func recall(u: PoliceUnit) -> void:
 func patrol(u: PoliceUnit) -> void:
 	if u.incident:
 		u.incident.unassign(u)
+	u.clear_station()
 	u.patrol_center = u.facility.center
 	u.patrol_radius = u.info.patrol_radius
 	u.zone_set = false
 	u.start_patrol()
 	GameState.post(u.callsign, "收到，恢复辖区巡逻。", "unit")
 	units_changed.emit()
+
+
+## 枫桥式驻点 / 撤点。位置优先巡区中心，无巡区用当前位置。
+func station_unit(u: PoliceUnit) -> bool:
+	if u.skill() != "mediate":
+		return false
+	if u.stationed:
+		u.clear_station()
+		GameState.post(u.callsign, "收到，结束驻点，返回勤务。", "unit")
+		units_changed.emit()
+		return true
+	if station_count() >= Data.STATION_MAX:
+		return false
+	var pos: Vector3 = u.patrol_center if u.zone_set else u.global_position
+	u.set_stationed(pos)
+	GameState.post(u.callsign, "已到驻点，就地化解邻里纠纷。", "unit")
+	units_changed.emit()
+	return true
+
+
+func station_count() -> int:
+	var n := 0
+	for u in units:
+		if u.stationed:
+			n += 1
+	return n
 
 
 # ------------------------------------------------------------------ 选择与指令
