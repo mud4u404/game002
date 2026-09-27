@@ -589,6 +589,8 @@ func _cand_row(inc: Incident, e: Dictionary) -> Control:
 		b.draw_string(fb, Vector2(56, 17), u.callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.TEXT if fit else UIKit.TEXT_DIM)
 		b.draw_string(UIKit.font("reg"), Vector2(56, 32), u.state_name() + (" · 疲劳" if u.fatigue > 60 else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIKit.TEXT_MUTED)
 		var tag: String = sk.name if fit else sk.name + " · 不对口"
+		if e.get("stationed", false):
+			tag += " · 驻点"
 		var tw := fb.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 12
 		var tr := Rect2(150, 10, tw, 18)
 		UIKit.draw_round_rect(b, tr, UIKit.with_alpha(sk.color if fit else UIKit.TEXT_MUTED, 0.2), 9, UIKit.with_alpha(sk.color if fit else UIKit.TEXT_MUTED, 0.7), 1)
@@ -686,6 +688,21 @@ func _ctx_unit(u: PoliceUnit) -> void:
 	_fields["task"] = tl
 	_right_body.add_child(tl)
 	var btns := []
+	# 枫桥式驻点：仅社区警务（调解）
+	if u.skill() == "mediate":
+		var stb := UIKit.accent_button("撤点" if u.stationed else "驻点", UIKit.CYAN if u.stationed else UIKit.ACCENT, 13)
+		stb.custom_minimum_size.y = 34
+		if not u.stationed and game.station_count() >= Data.STATION_MAX:
+			stb.disabled = true
+			stb.tooltip_text = "同时最多驻点 %d 处" % Data.STATION_MAX
+		elif not u.stationed:
+			stb.tooltip_text = "驻点：覆盖半径内纠纷就地化解，不参与自动派警"
+		else:
+			stb.tooltip_text = "结束驻点，恢复自动派警"
+		stb.pressed.connect(func():
+			game.station_unit(u)
+			_ctx_unit(u))
+		btns.append(stb)
 	var rb := UIKit.button("回所待命", 13)
 	rb.custom_minimum_size.y = 34
 	rb.pressed.connect(func(): game.recall(u))

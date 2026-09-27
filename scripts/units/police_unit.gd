@@ -29,6 +29,8 @@ var patrol_radius := 0.0
 var zone_set := false
 var bought_in_setup := false
 var chase_target = null            # Suspect       # 轮休中：返回驻地恢复体力
+var stationed := false             # 枫桥式驻点中
+var station_pos := Vector3.ZERO    # 驻点位置
 
 var _path := PackedVector3Array()
 var _seg := 0
@@ -190,6 +192,9 @@ func return_to_base() -> void:
 
 
 func start_patrol() -> void:
+	if stationed:
+		state = State.IDLE
+		return
 	incident = null
 	chase_target = null
 	_set_siren(false)
@@ -243,6 +248,18 @@ func clear_zone() -> void:
 	zone_set = false
 	patrol_center = facility.center
 	patrol_radius = info.patrol_radius
+
+
+## 枫桥式驻点：开到覆盖点停下，不参与巡逻与自动派警
+func set_stationed(pos: Vector3) -> void:
+	stationed = true
+	station_pos = Vector3(pos.x, 0, pos.z)
+	if incident == null and chase_target == null:
+		move_to(station_pos)
+
+
+func clear_station() -> void:
+	stationed = false
 
 
 func _pick_patrol_edge() -> int:

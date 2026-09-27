@@ -148,6 +148,13 @@ func _update_grid(dm: float) -> void:
 		presence[i] = lerpf(presence[i], minf(now[i], 2.0), a)
 		memory[i] *= decay
 		var r0 := base[i] * _zone_factor(i, night) * (1.0 + memory[i] * 0.45)
+		# 枫桥式驻点：覆盖网格内发案风险降低
+		if game != null:
+			var cc := cell_center(i)
+			for u in game.units:
+				if u.stationed and cc.distance_to(Vector2(u.station_pos.x, u.station_pos.z)) <= Data.STATION_RADIUS:
+					r0 *= Data.STATION_RISK_MULT
+					break
 		risk[i] = r0 / (1.0 + presence[i] * 1.8)
 		total += risk[i]
 		raw += r0

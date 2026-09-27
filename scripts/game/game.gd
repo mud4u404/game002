@@ -86,6 +86,11 @@ func _ready() -> void:
 		for u in units:
 			if u.info.patrol:
 				u.set_zone(u.facility.center, ZONE_RADIUS.get(u.kind, 150.0) * 1.6, false)
+		# 枫桥式：一组社区民警驻点在派出所附近高发区
+		for u in units:
+			if u.skill() == "mediate":
+				u.set_stationed(u.facility.center)
+				break
 	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
 		start_shift()
 	_dev_hooks()
@@ -121,6 +126,8 @@ func _dev_hooks() -> void:
 			spawn_incident()
 	if a.has("test-call"):
 		var inc := spawn_incident("armed")
+		if inc == null:
+			return
 		await get_tree().create_timer(0.5).timeout
 		hud.open_call(inc)
 		await get_tree().create_timer(1.0).timeout
@@ -151,6 +158,8 @@ func _dev_hooks() -> void:
 		# 跳过开场教学警情，避免 _focus_new 抢走选中，保证任何人 --test-fraud 都能复现
 		_opening.clear()
 		var finc := spawn_incident("fraud_report", true)
+		if finc == null:
+			return
 		classify(finc, "fraud_report")
 		if a.has("test-fraud-ok"):
 			do_freeze(finc)
@@ -160,6 +169,23 @@ func _dev_hooks() -> void:
 		await get_tree().create_timer(0.8).timeout
 		select(finc)
 		cam.focus_on(finc.spot.pos, 300)
+	if a.has("test-station"):
+		_opening.clear()
+		var sunit: PoliceUnit = null
+		for u in units:
+			if u.skill() == "mediate":
+				sunit = u
+				break
+		if sunit != null:
+			sunit.set_stationed(sunit.facility.center)
+			# 覆盖范围内连生 3 起纠纷；第一起固定就地化解，保证截图能看到电台
+			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
+			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
+			GameState.post(sunit.callsign, "%s的纠纷已就地化解。" % "驻点覆盖区", "good")
+			spawn_incident("dispute", true)
+			spawn_incident("dispute", true)
+			select(sunit)
+			cam.focus_on(sunit.station_pos, 320)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -168,6 +194,8 @@ func _dev_hooks() -> void:
 			hud.toggle_layer(id)
 	if a.has("test-suspect"):
 		var inc := spawn_incident("robbery")
+		if inc == null:
+			return
 		if inc.state == Incident.S.CALL:
 			classify(inc, "robbery")
 		await get_tree().create_timer(float(a.get("suspect-wait", "4"))).timeout
@@ -388,6 +416,18 @@ func spawn_incident(force_type := "", guided := false) -> Incident:
 				break
 		if ok:
 			break
+	# 枫桥式：纠纷落入驻点覆盖且判定成功，则就地化解，不生成警情
+	if type_id in Data.STATION_TYPES:
+		var solver: PoliceUnit = null
+		for u in units:
+			if u.stationed and Vector3(spot.pos.x, 0, spot.pos.z).distance_to(u.station_pos) <= Data.STATION_RADIUS:
+				solver = u
+				break
+		if solver != null and rng.randf() < Data.STATION_RESOLVE_CHANCE:
+			GameState.stats.station_solved = int(GameState.stats.get("station_solved", 0)) + 1
+			GameState.adjust(Data.STATION_OK_SAFETY, Data.STATION_OK_OPINION)
+			GameState.post(solver.callsign, "%s的纠纷已就地化解。" % spot.get("desc", "辖区"), "good")
+			return null
 	var inc := Incident.new()
 	inc.id = _next_inc
 	_next_inc += 1
@@ -696,7 +736,7 @@ func best_unit(inc: Incident, skill := "") -> PoliceUnit:
 	var best: PoliceUnit = null
 	var best_score := INF
 	for u in units:
-		if not u.is_available() or u.incident != null:
+		if not u.is_available() or u.incident != null or u.stationed:
 			continue
 		if skill != "" and u.skill() != skill:
 			continue
@@ -715,7 +755,7 @@ func candidates(inc: Incident, limit := 6) -> Array:
 		if not u.is_available() or u.incident == inc:
 			continue
 		var fit := miss.has(u.skill()) or miss.has("any")
-		out.append({"unit": u, "eta": u.eta_to(inc.spot.road_center, inc.spot.edge), "fit": fit})
+		out.append({"unit": u, "eta": u.eta_to(inc.spot.road_center, inc.spot.edge), "fit": fit, "stationed": u.stationed})
 	out.sort_custom(func(a, b):
 		if a.fit != b.fit:
 			return a.fit
@@ -726,6 +766,10 @@ func candidates(inc: Incident, limit := 6) -> Array:
 func assign(u: PoliceUnit, inc: Incident, manual: bool) -> void:
 	if u.incident == inc:
 		return
+	if manual and u.stationed:
+		# 手动派警：解除驻点
+		u.clear_station()
+		units_changed.emit()
 	if u.incident != null:
 		u.incident.unassign(u)
 	inc.units.append(u)
@@ -759,6 +803,8 @@ func _on_unit_arrived(u: PoliceUnit) -> void:
 
 
 func recall(u: PoliceUnit) -> void:
+	if u.stationed:
+		u.clear_station()
 	if u.incident:
 		u.incident.unassign(u)
 	u.clear_zone()
@@ -770,12 +816,39 @@ func recall(u: PoliceUnit) -> void:
 func patrol(u: PoliceUnit) -> void:
 	if u.incident:
 		u.incident.unassign(u)
+	u.clear_station()
 	u.patrol_center = u.facility.center
 	u.patrol_radius = u.info.patrol_radius
 	u.zone_set = false
 	u.start_patrol()
 	GameState.post(u.callsign, "收到，恢复辖区巡逻。", "unit")
 	units_changed.emit()
+
+
+## 枫桥式驻点 / 撤点。位置优先巡区中心，无巡区用当前位置。
+func station_unit(u: PoliceUnit) -> bool:
+	if u.skill() != "mediate":
+		return false
+	if u.stationed:
+		u.clear_station()
+		GameState.post(u.callsign, "收到，结束驻点，返回勤务。", "unit")
+		units_changed.emit()
+		return true
+	if station_count() >= Data.STATION_MAX:
+		return false
+	var pos: Vector3 = u.patrol_center if u.zone_set else u.global_position
+	u.set_stationed(pos)
+	GameState.post(u.callsign, "已到驻点，就地化解邻里纠纷。", "unit")
+	units_changed.emit()
+	return true
+
+
+func station_count() -> int:
+	var n := 0
+	for u in units:
+		if u.stationed:
+			n += 1
+	return n
 
 
 # ------------------------------------------------------------------ 选择与指令
