@@ -534,29 +534,33 @@ func _refresh_freeze(inc: Incident) -> void:
 			right.add_theme_constant_override("separation", 2)
 			right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var lab := UIKit.label("", 12, UIKit.AMBER, "bold")
-			lab.name = "ftime"
+			_fields["freeze_time"] = lab
 			right.add_child(lab)
 			var bar := MeterBar.new(UIKit.AMBER, 5.0, 20)
-			bar.name = "fbar"
+			_fields["freeze_bar"] = bar
 			right.add_child(bar)
 			box.add_child(right)
 		elif st == "ok":
+			_fields.erase("freeze_time")
+			_fields.erase("freeze_bar")
 			var okl := UIKit.label("已止付 %s" % Data.money_str(inc.loss), 13, UIKit.GREEN, "bold")
 			okl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			okl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			box.add_child(okl)
 		else:
+			_fields.erase("freeze_time")
+			_fields.erase("freeze_bar")
 			var nol := UIKit.label("止付失败 · 资金已被转移", 13, UIKit.RED, "bold")
 			nol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			nol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			box.add_child(nol)
-	if st == "pending" and box.has_node("ftime"):
+	if st == "pending" and _fields.has("freeze_time") and _fields.has("freeze_bar"):
 		var frac := clampf(inc.freeze_left / Data.FREEZE_WINDOW, 0.0, 1.0)
 		var col: Color = UIKit.RED if frac < 0.25 else UIKit.AMBER
-		var tl: Label = box.get_node("ftime")
+		var tl: Label = _fields["freeze_time"]
 		tl.text = "剩余 %s" % UIKit.fmt_min(inc.freeze_left)
 		tl.add_theme_color_override("font_color", col)
-		var tb: MeterBar = box.get_node("fbar")
+		var tb: MeterBar = _fields["freeze_bar"]
 		tb.set_value(frac, col)
 
 

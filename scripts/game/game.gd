@@ -148,10 +148,15 @@ func _dev_hooks() -> void:
 			select(target)
 			cam.focus_on(target.global_position, 280)
 	if a.has("test-fraud"):
+		# 跳过开场教学警情，避免 _focus_new 抢走选中，保证任何人 --test-fraud 都能复现
+		_opening.clear()
 		var finc := spawn_incident("fraud_report", true)
 		classify(finc, "fraud_report")
 		if a.has("test-fraud-ok"):
 			do_freeze(finc)
+		if a.has("test-fraud-late"):
+			# 倒计时压到 <25%（4/20），验证红字与红条
+			finc.freeze_left = Data.FREEZE_WINDOW * 0.2
 		await get_tree().create_timer(0.8).timeout
 		select(finc)
 		cam.focus_on(finc.spot.pos, 300)
@@ -570,6 +575,12 @@ func _fail(inc: Incident, why: String) -> void:
 
 
 func _finish(inc: Incident) -> void:
+	# 止付窗口未结就先结案：按方案 a 在此按 late 结算，避免 pending 悬挂
+	if inc.freeze_state == "pending":
+		inc.freeze_state = "late"
+		inc.freeze_left = 0.0
+		GameState.adjust(Data.FREEZE_LATE_SAFETY, Data.FREEZE_LATE_OPINION)
+		GameState.post("反诈中心", "警情已结案，资金已被转移，止付失败。", "bad")
 	inc.refresh_marker()
 	incident_updated.emit(inc)
 	if inc.marker:
@@ -649,9 +660,9 @@ func _start_freeze(inc: Incident) -> void:
 	GameState.post("反诈中心", "研判为电信诈骗，资金链尚未断开。请在 %d 分钟内紧急止付！" % int(Data.FREEZE_WINDOW), "lv2")
 
 
-## 紧急止付：剩余 ≥50% 全额，否则 60%。与派警独立。
+## 紧急止付：剩余 ≥50% 全额，否则 60%。与派警独立；警情已结束则不可再按。
 func do_freeze(inc: Incident) -> void:
-	if inc.freeze_state != "pending":
+	if inc.freeze_state != "pending" or not inc.is_active():
 		return
 	var frac: float = inc.freeze_left / Data.FREEZE_WINDOW
 	var amount: int = int(float(inc.loss) * (1.0 if frac >= 0.5 else 0.6))
