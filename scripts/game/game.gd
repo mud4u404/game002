@@ -75,6 +75,7 @@ func _ready() -> void:
 			for k in plan[kind]:
 				_spawn_unit(kind, f)
 	GameState.staff_used = _staff_count()
+	_ensure_event()   # 班前部署就要看到今晚的活动，才能预先布警
 	hud = HUD.new()
 	add_child(hud)
 	hud.setup(self)
