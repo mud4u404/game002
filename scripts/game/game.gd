@@ -45,6 +45,7 @@ var phase := "setup"          # setup 班前部署 → shift 值班中
 var _shift_t := 0.0
 var _opening: Array = []
 var city_event: CityEvent = null
+var _event_incidents := {}
 var _event_day := -1
 
 
@@ -124,10 +125,10 @@ func _ready() -> void:
 		start_shift()
 	# bot 布警（--no-event-guard 供 A/B）
 	if DevTools.args.has("bot") and not DevTools.args.has("no-event-guard") and city_event != null:
-		# 按 need() 布警；每专长留 1 组城区机动，且最多布 1 组（保证净收益）
+		# 按 need() 布警；每专长留 1 组城区机动，最多布 2 组
 		var ned: Dictionary = city_event.need()
 		for k in ned.keys():
-			if not city_event.guard.is_empty():
+			if city_event.guard.size() >= 2:
 				break
 			var sk: String = String(k)
 			var pool: Array = []
@@ -170,6 +171,29 @@ func start_shift() -> void:
 
 # ------------------------------------------------------------------ 大型活动
 func _pick_event_pos() -> Vector3:
+	var prefer_zone: String = ""
+	if city_event != null:
+		prefer_zone = String(city_event.data.get("zone", ""))
+	# 优先在活动所属片区内挑风险最高格；无则全局
+	var scored: Array = []
+	for i in ops.cell_edges.size():
+		if ops.cell_edges[i].is_empty():
+			continue
+		var z: String = city._zone_for(ops.cell_center(i))
+		if prefer_zone != "" and z != prefer_zone:
+			continue
+		var f: Array = Ops.ZONE_RISK.get(z, [0.7, 0.8])
+		scored.append({"i": i, "s": ops.base[i] * maxf(f[0], f[1])})
+	if scored.is_empty() and prefer_zone != "":
+		return _pick_event_pos_any()
+	scored.sort_custom(func(a, b): return a.s > b.s)
+	if scored.is_empty():
+		return Vector3.ZERO
+	var cc: Vector2 = ops.cell_center(int(scored[0].i))
+	return Vector3(cc.x, 0, cc.y)
+
+
+func _pick_event_pos_any() -> Vector3:
 	var scored: Array = []
 	for i in ops.cell_edges.size():
 		if ops.cell_edges[i].is_empty():
@@ -207,6 +231,9 @@ func _settle_event() -> void:
 		return
 	city_event.settled = true
 	GameState.stats.event_total = int(GameState.stats.get("event_total", 0)) + 1
+	# 无人布警且人流警情已多次出现：视同失控失当（让「布不布警」有分量）
+	if city_event.failed <= 0 and city_event.avg_coverage() < 0.05 and city_event.total_spawned >= 2:
+		city_event.failed = 1
 	if city_event.failed <= 0:
 		city_event.success = true
 		GameState.stats.event_ok = int(GameState.stats.get("event_ok", 0)) + 1
@@ -555,9 +582,13 @@ func _process(delta: float) -> void:
 				var einc := spawn_incident(tid, false, city_event.pos + Vector3(rng.randf_range(-60.0, 60.0), 0, rng.randf_range(-60.0, 60.0)))
 				if einc != null:
 					city_event.total_spawned += 1
+					_event_incidents[einc.id] = true
 					# 覆盖不足（<50%）的专长对应警情：等级 +1（人多失控）
 					if city_event.weak_for_type(tid):
 						einc.level_boost += 1
+					elif city_event.avg_coverage() >= 0.5:
+						# 布警到位：恶化更慢
+						einc.deadline *= 1.6
 	_tutorial_tick(delta)
 
 
@@ -766,7 +797,7 @@ func _escalate(inc: Incident) -> void:
 
 func _resolve(inc: Incident) -> void:
 	inc.state = Incident.S.DONE
-	var lvl := int(inc.true_data().level)
+	var lvl := int(inc.true_data().level) + int(inc.level_boost)
 	var resp := inc.arrival - inc.created if inc.arrival >= 0 else 99.0
 	var target: float = [0.0, 16.0, 12.0, 10.0, 10.0][clampi(lvl, 1, 4)]
 	var perfect: bool = resp <= target and inc.escalations == 0
@@ -790,12 +821,14 @@ func _resolve(inc: Incident) -> void:
 
 func _fail(inc: Incident, why: String) -> void:
 	inc.state = Incident.S.FAILED
-	var lvl := int(inc.true_data().level)
+	# 含 level_boost：活动弱覆盖升级的警情，失败更疼
+	var lvl := int(inc.true_data().level) + int(inc.level_boost)
 	GameState.adjust(-3.0 * lvl, -2.5 * lvl)
 	GameState.stats.failed += 1
-	# 活动现场失控：计一次失当
-	if city_event != null and not city_event.settled and city_event.is_now() and city_event.contains(inc.spot.pos):
+	# 活动现场失控：只计活动自发警情的失败
+	if city_event != null and not city_event.settled and _event_incidents.has(inc.id):
 		city_event.failed += 1
+		_event_incidents.erase(inc.id)
 	GameState.post("指挥中心", "%s：%s，%s。群众安全感下降。" % [inc.desc(), inc.title(), why], "lv4")
 	for u in inc.units.duplicate():
 		u.release(true)
