@@ -569,7 +569,7 @@ func _process(delta: float) -> void:
 			if inc.is_active() and inc.state != Incident.S.CALL:
 				load += inc.level()
 		# 安保圆满抬高安全感回归目标（让布警收益能留住）
-		var target := 56.0 + 16.0 * ops.seen_rate + 1.2 * float(GameState.stats.get("event_ok", 0))
+		var target := 56.0 + 16.0 * ops.seen_rate + minf(Data.EVENT_TRUST_PER_OK * float(GameState.stats.get("event_ok", 0)), Data.EVENT_TRUST_CAP)
 		GameState.safety = clampf(GameState.safety + ((target - GameState.safety) * 0.006 - load * 0.006) * dm, 0.0, 100.0)
 		GameState.opinion = clampf(GameState.opinion + (62.0 - GameState.opinion) * 0.003 * dm, 0.0, 100.0)
 
