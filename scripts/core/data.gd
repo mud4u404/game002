@@ -29,26 +29,26 @@ const STATION_OK_MONEY := 2500.0                                 # 就地化解�
 # ---------------------------------------------------------------- 大型活动安保
 const EVENT_RADIUS := 140.0                    # 活动区覆盖半径（米）；220 过大盖住半城，缩至 140
 const EVENT_COVER_SUPPRESS := 1.0             # 覆盖率对额外发案率的抑制
-const EVENT_OK_SAFETY := 3.0                   # 安保圆满安全感
-const EVENT_OK_OPINION := 3.5                  # 安保圆满舆情
+const EVENT_OK_SAFETY := 6.0                   # 安保圆满安全感（目标 B−A safety ≥ +2）
+const EVENT_OK_OPINION := 4.0                  # 安保圆满舆情
 const EVENT_OK_MONEY := 15000.0                # 安保圆满奖励
-const EVENT_FAIL_SAFETY := -8.0                # 安保失当安全感
-const EVENT_FAIL_OPINION := -8.0               # 安保失当舆情
+const EVENT_FAIL_SAFETY := -4.5                # 安保失当安全感（−8 过重，一场定整局）
+const EVENT_FAIL_OPINION := -5.0               # 安保失当舆情
 
 ## 大型活动表：zone 选点片区（city._zone_for）；need 专长需求；types 活动区警情；rate 额外发案率
 const EVENTS := [
 	{"name": "滨江夜市美食节", "zone": "riverside", "start": 19.0, "end": 22.0,
 		"need": {"control": 1, "traffic": 1},
 		"types": ["crowd_dispute", "fight", "drunk", "lost_child", "jam"],
-		"rate": 0.11},
+		"rate": 0.08},
 	{"name": "体育馆演唱会", "zone": "cbd", "start": 19.5, "end": 22.5,
 		"need": {"control": 1, "traffic": 1},
 		"types": ["crowd_dispute", "fight", "jam", "traffic_minor", "lost_child"],
-		"rate": 0.10},
+		"rate": 0.07},
 	{"name": "元宵灯会", "zone": "oldtown", "start": 18.5, "end": 22.0,
 		"need": {"mediate": 1, "control": 1},
 		"types": ["lost_child", "crowd_dispute", "jam", "theft", "dispute"],
-		"rate": 0.09},
+		"rate": 0.06},
 ]
 
 # ---------------------------------------------------------------- 单位
