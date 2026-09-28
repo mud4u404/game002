@@ -31,6 +31,8 @@ var bought_in_setup := false
 var chase_target = null            # Suspect       # 轮休中：返回驻地恢复体力
 var stationed := false             # 枫桥式驻点中
 var station_pos := Vector3.ZERO    # 驻点位置
+var on_event := false              # 大型活动安保中
+var event_pos := Vector3.ZERO      # 活动区位置
 
 var _path := PackedVector3Array()
 var _seg := 0
@@ -192,6 +194,9 @@ func return_to_base() -> void:
 
 
 func start_patrol() -> void:
+	if on_event:
+		move_to(event_pos)
+		return
 	if stationed:
 		# 驻点：被打断（轮休/处置结束）后回到驻点停下
 		move_to(station_pos)
@@ -261,6 +266,18 @@ func set_stationed(pos: Vector3) -> void:
 
 func clear_station() -> void:
 	stationed = false
+
+
+## 大型活动安保：开到活动区待命
+func set_event_guard(pos: Vector3) -> void:
+	on_event = true
+	event_pos = Vector3(pos.x, 0, pos.z)
+	if incident == null and chase_target == null:
+		move_to(event_pos)
+
+
+func clear_event() -> void:
+	on_event = false
 
 
 func _pick_patrol_edge() -> int:

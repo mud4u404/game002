@@ -44,6 +44,8 @@ var _started := false
 var phase := "setup"          # setup 班前部署 → shift 值班中
 var _shift_t := 0.0
 var _opening: Array = []
+var city_event: CityEvent = null
+var _event_day := -1
 
 
 func _ready() -> void:
@@ -119,6 +121,24 @@ func _ready() -> void:
 					mediators[zi].set_stationed(Vector3(pc.x, 0, pc.y))
 	if DevTools.args.has("skip-setup") or DevTools.args.has("quit-frames"):
 		start_shift()
+	# bot 布警（--no-event-guard 供 A/B）
+	if DevTools.args.has("bot") and not DevTools.args.has("no-event-guard") and city_event != null:
+		# 按 need() 布警；每专长留 1 组城区机动，且最多布 1 组（保证净收益）
+		var ned: Dictionary = city_event.need()
+		for k in ned.keys():
+			if not city_event.guard.is_empty():
+				break
+			var sk: String = String(k)
+			var pool: Array = []
+			for u in units:
+				if u.skill() == sk and not u.on_event and not u.stationed and u.incident == null:
+					pool.append(u)
+			if pool.size() >= 2:
+				event_guard(pool[0])
+		var cov := {}
+		for k in ned.keys():
+			cov[String(k)] = city_event.coverage(String(k))
+		print("[event-guard] need=", ned, " coverage=", cov)
 	_dev_hooks()
 
 
@@ -143,7 +163,83 @@ func start_shift() -> void:
 	if not lacking.is_empty():
 		GameState.post("值班长", "注意：没有%s警力，这类警情将无人能处置。" % "、".join(lacking), "lv3")
 	_tut_once("shift", "开始值班。系统会按就近、警种对口自动派警；来电要你亲自研判定性。对口警力不够时，警情会亮红，需要你调度或组建。")
+	_ensure_event()
 
+
+
+# ------------------------------------------------------------------ 大型活动
+func _pick_event_pos() -> Vector3:
+	var scored: Array = []
+	for i in ops.cell_edges.size():
+		if ops.cell_edges[i].is_empty():
+			continue
+		var z: String = city._zone_for(ops.cell_center(i))
+		var f: Array = Ops.ZONE_RISK.get(z, [0.7, 0.8])
+		scored.append({"i": i, "s": ops.base[i] * maxf(f[0], f[1])})
+	scored.sort_custom(func(a, b): return a.s > b.s)
+	if scored.is_empty():
+		return Vector3.ZERO
+	var cc: Vector2 = ops.cell_center(int(scored[0].i))
+	return Vector3(cc.x, 0, cc.y)
+
+
+func _ensure_event() -> void:
+	# 只在换天时新建；同一天已结算的活动不得重建（否则幽灵活动白拿奖励）
+	if city_event != null and _event_day == GameState.day():
+		return
+	if city_event != null and not city_event.settled:
+		_settle_event()
+	var pool: Array = Data.EVENTS
+	if pool.is_empty():
+		return
+	var pick: Dictionary = pool[GameState.day() % pool.size()]
+	city_event = CityEvent.new()
+	city_event.data = pick
+	city_event.day = GameState.day()
+	city_event.pos = _pick_event_pos()
+	_event_day = GameState.day()
+	GameState.post("指挥中心", "今晚有大型活动「%s」（%d:00–%d:00），请在班前部署时预先布警。" % [city_event.name(), int(city_event.start_hour()), int(city_event.end_hour())], "sys")
+
+
+func _settle_event() -> void:
+	if city_event == null or city_event.settled:
+		return
+	city_event.settled = true
+	GameState.stats.event_total = int(GameState.stats.get("event_total", 0)) + 1
+	if city_event.failed <= 0:
+		city_event.success = true
+		GameState.stats.event_ok = int(GameState.stats.get("event_ok", 0)) + 1
+		GameState.earn(Data.EVENT_OK_MONEY)
+		GameState.adjust(Data.EVENT_OK_SAFETY, Data.EVENT_OK_OPINION)
+		GameState.post("指挥中心", "大型活动「%s」安保圆满。" % city_event.name(), "good")
+		print("[event] 安保圆满：", city_event.name())
+	else:
+		city_event.success = false
+		GameState.adjust(Data.EVENT_FAIL_SAFETY, Data.EVENT_FAIL_OPINION)
+		GameState.post("指挥中心", "大型活动「%s」安保失当，现场发生 %d 起失败处置。" % [city_event.name(), city_event.failed], "lv4")
+		print("[event] 安保失当：", city_event.name(), " failed=", city_event.failed)
+	for u in units:
+		if u.on_event:
+			u.clear_event()
+	units_changed.emit()
+
+
+func event_guard(u: PoliceUnit) -> void:
+	if city_event == null or city_event.settled:
+		return
+	if u.on_event:
+		u.clear_event()
+		if city_event != null:
+			city_event.guard.erase(u)
+		GameState.post(u.callsign, "收到，撤离活动安保。", "unit")
+		units_changed.emit()
+		return
+	u.clear_station()
+	u.set_event_guard(city_event.pos)
+	if not city_event.guard.has(u):
+		city_event.guard.append(u)
+	GameState.post(u.callsign, "已到「%s」现场备勤。" % city_event.name(), "unit")
+	units_changed.emit()
 
 func _dev_hooks() -> void:
 	var a: Dictionary = DevTools.args
@@ -227,6 +323,22 @@ func _dev_hooks() -> void:
 				assign(dunit, minc, false)
 				select(dunit)
 				cam.focus_on(dunit.global_position, 300)
+	if a.has("test-event"):
+		_opening.clear()
+		_ensure_event()
+		if city_event != null:
+			# 跳到活动开始前 10 分钟
+			var target_min: float = city_event.start_hour() * 60.0 - 10.0
+			if GameState.minutes < target_min:
+				GameState.minutes = target_min
+			var eu: PoliceUnit = null
+			for u in units:
+				if u.skill() == "control":
+					eu = u
+					break
+			if eu != null:
+				event_guard(eu)
+			cam.focus_on(city_event.pos, 400)
 	if a.has("test-report"):
 		await get_tree().create_timer(2.0).timeout
 		hud.day_report_panel.show_for_test()
@@ -425,6 +537,26 @@ func _process(delta: float) -> void:
 		GameState.safety = clampf(GameState.safety + ((target - GameState.safety) * 0.006 - load * 0.006) * dm, 0.0, 100.0)
 		GameState.opinion = clampf(GameState.opinion + (62.0 - GameState.opinion) * 0.003 * dm, 0.0, 100.0)
 
+	# 大型活动：新一天选活动、到期结算、活动区加开发案
+	_ensure_event()
+	if city_event != null and not city_event.settled:
+		var eh := GameState.hour()
+		if city_event.is_now():
+			city_event.started = true
+		elif city_event.started and (eh >= city_event.end_hour() or eh < city_event.start_hour()):
+			_settle_event()
+	if city_event != null and city_event.is_now() and not city_event.settled and dm > 0.0:
+		var ev_rate: float = city_event.base_rate() * city_event.rate_mult() * dm
+		if rng.randf() < ev_rate:
+			var ts: Array = city_event.types()
+			if not ts.is_empty():
+				var tid: String = ts[rng.randi() % ts.size()]
+				var einc := spawn_incident(tid, false, city_event.pos + Vector3(rng.randf_range(-60.0, 60.0), 0, rng.randf_range(-60.0, 60.0)))
+				if einc != null:
+					city_event.total_spawned += 1
+					# 覆盖不足（<50%）的专长对应警情：等级 +1（人多失控）
+					if city_event.weak_for_type(tid):
+						einc.level_boost += 1
 	_tutorial_tick(delta)
 
 
@@ -660,6 +792,9 @@ func _fail(inc: Incident, why: String) -> void:
 	var lvl := int(inc.true_data().level)
 	GameState.adjust(-3.0 * lvl, -2.5 * lvl)
 	GameState.stats.failed += 1
+	# 活动现场失控：计一次失当
+	if city_event != null and not city_event.settled and city_event.is_now() and city_event.contains(inc.spot.pos):
+		city_event.failed += 1
 	GameState.post("指挥中心", "%s：%s，%s。群众安全感下降。" % [inc.desc(), inc.title(), why], "lv4")
 	for u in inc.units.duplicate():
 		u.release(true)
@@ -803,6 +938,10 @@ func best_unit(inc: Incident, skill := "") -> PoliceUnit:
 	for u in units:
 		if not u.is_available() or u.incident != null or u.stationed:
 			continue
+		# 活动安保：只接活动区内警情
+		if u.on_event:
+			if city_event == null or not city_event.contains(inc.spot.pos):
+				continue
 		if skill != "" and u.skill() != skill:
 			continue
 		var score: float = u.eta_to(inc.spot.road_center, inc.spot.edge) + u.fatigue * 0.04

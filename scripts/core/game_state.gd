@@ -23,7 +23,7 @@ var auto_dispatch := true    # 就近、警种匹配、自动派警
 var stats := {"total": 0, "resolved": 0, "failed": 0, "perfect": 0,
 	"resp_sum": 0.0, "resp_n": 0, "calls_ok": 0, "calls_total": 0,
 	"freeze_total": 0, "freeze_ok": 0, "freeze_amount": 0,
-	"station_solved": 0}
+	"station_solved": 0, "event_total": 0, "event_ok": 0}
 var _last_day := 1
 
 

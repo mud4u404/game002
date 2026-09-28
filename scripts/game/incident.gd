@@ -25,6 +25,7 @@ var marker: Node3D
 var ring_mat: ShaderMaterial
 var beam_mat: ShaderMaterial
 var escalations := 0
+var level_boost := 0               # 大型活动弱覆盖：等级 +N（人多失控）
 var suspect = null            # Suspect（抢劫等警情的逃逸嫌疑人）
 # 反诈止付
 var freeze_state := ""        # "" / "pending" / "ok" / "late"
@@ -41,7 +42,7 @@ func true_data() -> Dictionary:
 
 
 func level() -> int:
-	return int(data().level)
+	return int(data().level) + level_boost
 
 
 func title() -> String:
