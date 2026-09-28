@@ -201,7 +201,7 @@ func _event_card(ev: CityEvent) -> Control:
 	pc.add_child(v)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
-	h.add_child(UIKit.icon_label("event", 15, UIKit.AMBER))
+	h.add_child(UIKit.icon_label("groups", 15, UIKit.AMBER))
 	h.add_child(UIKit.label(ev.name(), 13, UIKit.AMBER, "bold"))
 	h.add_child(UIKit.label("%d:00–%d:00" % [int(ev.start_hour()), int(ev.end_hour())], 12, UIKit.TEXT_MUTED))
 	v.add_child(h)
