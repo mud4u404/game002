@@ -26,13 +26,19 @@ for g in ("A", "B"):
 	for s in seeds:
 		line = open(os.path.join(out, f"{g}_{s}")).read().strip()
 		print(f"{g} seed={s}: {line}")
-		rows.append({k: float(m.group(1)) for k in keys for m in [re.search(rf"\b{k}=([-\d.]+)", line)] if m})
+		r = {k: float(m.group(1)) for k in keys for m in [re.search(rf"\b{k}=([-\d.]+)", line)] if m}
+		ev = re.search(r"\bevent=(\d+)/(\d+)", line)
+		if ev:
+			r["ev_ok"], r["ev_n"] = float(ev.group(1)), float(ev.group(2))
+		rows.append(r)
 	avg[g] = {k: sum(r.get(k, 0.0) for r in rows) / max(len(rows), 1) for k in keys}
+	avg[g]["ev_ok"] = sum(r.get("ev_ok", 0.0) for r in rows)
+	avg[g]["ev_n"] = sum(r.get("ev_n", 0.0) for r in rows)
 print()
-print("| | " + " | ".join(keys) + " |")
-print("|---|" + "---|" * len(keys))
+print("| | " + " | ".join(keys) + " | event（合计） |")
+print("|---|" + "---|" * (len(keys) + 1))
 for g in ("A", "B"):
-	print(f"| {g} 均值 | " + " | ".join(f"{avg[g][k]:.1f}" for k in keys) + " |")
+	print(f"| {g} 均值 | " + " | ".join(f"{avg[g][k]:.1f}" for k in keys) + f" | {int(avg[g]['ev_ok'])}/{int(avg[g]['ev_n'])} |")
 a, b = avg["A"], avg["B"]
 print(f"\nB/A money = {b['money'] / max(a['money'], 1) * 100:.1f}%  safety {b['safety'] - a['safety']:+.1f}  opinion {b['opinion'] - a['opinion']:+.1f}")
 PY
