@@ -123,11 +123,22 @@ func _ready() -> void:
 		start_shift()
 	# bot 布警（--no-event-guard 供 A/B）
 	if DevTools.args.has("bot") and not DevTools.args.has("no-event-guard") and city_event != null:
-		# bot 只派 1 组：在编不膨胀前提下展示布警收益
-		for u in units:
-			if not u.on_event and not u.stationed and u.incident == null and u.skill() == "control":
-				event_guard(u)
+		# 按 need() 布警；每专长留 1 组城区机动，且最多布 1 组（保证净收益）
+		var ned: Dictionary = city_event.need()
+		for k in ned.keys():
+			if not city_event.guard.is_empty():
 				break
+			var sk: String = String(k)
+			var pool: Array = []
+			for u in units:
+				if u.skill() == sk and not u.on_event and not u.stationed and u.incident == null:
+					pool.append(u)
+			if pool.size() >= 2:
+				event_guard(pool[0])
+		var cov := {}
+		for k in ned.keys():
+			cov[String(k)] = city_event.coverage(String(k))
+		print("[event-guard] need=", ned, " coverage=", cov)
 	_dev_hooks()
 
 
@@ -173,7 +184,8 @@ func _pick_event_pos() -> Vector3:
 
 
 func _ensure_event() -> void:
-	if city_event != null and _event_day == GameState.day() and not city_event.settled:
+	# 只在换天时新建；同一天已结算的活动不得重建（否则幽灵活动白拿奖励）
+	if city_event != null and _event_day == GameState.day():
 		return
 	if city_event != null and not city_event.settled:
 		_settle_event()
@@ -200,10 +212,12 @@ func _settle_event() -> void:
 		GameState.earn(Data.EVENT_OK_MONEY)
 		GameState.adjust(Data.EVENT_OK_SAFETY, Data.EVENT_OK_OPINION)
 		GameState.post("指挥中心", "大型活动「%s」安保圆满。" % city_event.name(), "good")
+		print("[event] 安保圆满：", city_event.name())
 	else:
 		city_event.success = false
 		GameState.adjust(Data.EVENT_FAIL_SAFETY, Data.EVENT_FAIL_OPINION)
 		GameState.post("指挥中心", "大型活动「%s」安保失当，现场发生 %d 起失败处置。" % [city_event.name(), city_event.failed], "lv4")
+		print("[event] 安保失当：", city_event.name(), " failed=", city_event.failed)
 	for u in units:
 		if u.on_event:
 			u.clear_event()
@@ -540,6 +554,9 @@ func _process(delta: float) -> void:
 				var einc := spawn_incident(tid, false, city_event.pos + Vector3(rng.randf_range(-60.0, 60.0), 0, rng.randf_range(-60.0, 60.0)))
 				if einc != null:
 					city_event.total_spawned += 1
+					# 覆盖不足（<50%）的专长对应警情：等级 +1（人多失控）
+					if city_event.weak_for_type(tid):
+						einc.level_boost += 1
 	_tutorial_tick(delta)
 
 
@@ -775,6 +792,9 @@ func _fail(inc: Incident, why: String) -> void:
 	var lvl := int(inc.true_data().level)
 	GameState.adjust(-3.0 * lvl, -2.5 * lvl)
 	GameState.stats.failed += 1
+	# 活动现场失控：计一次失当
+	if city_event != null and not city_event.settled and city_event.is_now() and city_event.contains(inc.spot.pos):
+		city_event.failed += 1
 	GameState.post("指挥中心", "%s：%s，%s。群众安全感下降。" % [inc.desc(), inc.title(), why], "lv4")
 	for u in inc.units.duplicate():
 		u.release(true)
