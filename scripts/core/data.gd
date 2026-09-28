@@ -34,6 +34,8 @@ const EVENT_OK_OPINION := 4.0                  # 安保圆满舆情
 const EVENT_OK_MONEY := 15000.0                # 安保圆满奖励
 const EVENT_FAIL_SAFETY := -4.5                # 安保失当安全感（−8 过重，一场定整局）
 const EVENT_FAIL_OPINION := -5.0               # 安保失当舆情
+const EVENT_TRUST_PER_OK := 1.2                # 每次安保圆满抬高安全感回归目标
+const EVENT_TRUST_CAP := 6.0                   # 上述抬高的上限（防止长期累积把安全感推到满）
 
 ## 大型活动表：zone 选点片区（city._zone_for）；need 专长需求；types 活动区警情；rate 额外发案率
 const EVENTS := [
